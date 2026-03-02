@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0c0a09;
+  --foreground: #fafaf9;
+  --card: #1c1917;
+  --muted: #78716c;
+  --accent: #f59e0b;
+  --accent-hover: #d97706;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0.9;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}

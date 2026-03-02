@@ -1,0 +1,111 @@
+import type { Venue } from "@/types";
+
+// Sample venues in São Paulo (approximate coordinates for real areas)
+export const MOCK_VENUES: Venue[] = [
+  {
+    id: "1",
+    name: "Bar do Zé",
+    address: "Rua Augusta, 1234 - Consolação",
+    neighborhood: "Consolação",
+    city: "São Paulo",
+    state: "SP",
+    lat: -23.5505,
+    lng: -46.6333,
+    beerPrices: [
+      { type: "chope", label: "Chope", priceBRL: 8, volumeMl: 300 },
+      { type: "long_neck", label: "Long neck", priceBRL: 10, volumeMl: 355 },
+      { type: "lata", label: "Lata", priceBRL: 7, volumeMl: 350 },
+    ],
+    hasHappyHour: true,
+    happyHourDetails: "Seg–Sex 17h–20h: chope R$ 6",
+    createdAt: "2024-01-15T10:00:00Z",
+  },
+  {
+    id: "2",
+    name: "Boteco Vila Madalena",
+    address: "Rua Harmonia, 567",
+    neighborhood: "Vila Madalena",
+    city: "São Paulo",
+    state: "SP",
+    lat: -23.5489,
+    lng: -46.6882,
+    beerPrices: [
+      { type: "chope", label: "Chope", priceBRL: 12, volumeMl: 300 },
+      { type: "long_neck", label: "Long neck", priceBRL: 14, volumeMl: 355 },
+    ],
+    hasHappyHour: true,
+    happyHourDetails: "Ter–Qui 18h–21h: 2 chopes pelo preço de 1",
+    createdAt: "2024-01-20T10:00:00Z",
+  },
+  {
+    id: "3",
+    name: "Cervejaria Pinheiros",
+    address: "Rua dos Pinheiros, 800",
+    neighborhood: "Pinheiros",
+    city: "São Paulo",
+    state: "SP",
+    lat: -23.5634,
+    lng: -46.6932,
+    beerPrices: [
+      { type: "chope", label: "Chope", priceBRL: 9, volumeMl: 300 },
+      { type: "lata", label: "Lata", priceBRL: 6.5, volumeMl: 350 },
+      { type: "garrafa", label: "Garrafa 600ml", priceBRL: 15, volumeMl: 600 },
+    ],
+    hasHappyHour: false,
+    createdAt: "2024-02-01T10:00:00Z",
+  },
+  {
+    id: "4",
+    name: "Bar do Centro",
+    address: "Praça da Sé, 100",
+    neighborhood: "Sé",
+    city: "São Paulo",
+    state: "SP",
+    lat: -23.5504,
+    lng: -46.6339,
+    beerPrices: [
+      { type: "chope", label: "Chope", priceBRL: 5.5, volumeMl: 300 },
+      { type: "lata", label: "Lata", priceBRL: 5, volumeMl: 350 },
+    ],
+    hasHappyHour: true,
+    happyHourDetails: "Todo dia 11h–14h: chope R$ 4,50",
+    createdAt: "2024-02-10T10:00:00Z",
+  },
+  {
+    id: "5",
+    name: "Bar do Mané",
+    address: "Av. Paulista, 500",
+    neighborhood: "Bela Vista",
+    city: "São Paulo",
+    state: "SP",
+    lat: -23.5615,
+    lng: -46.6559,
+    beerPrices: [
+      { type: "chope", label: "Chope", priceBRL: 14, volumeMl: 300 },
+      { type: "long_neck", label: "Long neck", priceBRL: 18, volumeMl: 355 },
+    ],
+    hasHappyHour: false,
+    createdAt: "2024-02-15T10:00:00Z",
+  },
+  {
+    id: "6",
+    name: "Bar Central Campinas",
+    address: "Rua José Paulino, 1000",
+    neighborhood: "Centro",
+    city: "Campinas",
+    state: "SP",
+    lat: -22.9099,
+    lng: -47.0626,
+    beerPrices: [
+      { type: "chope", label: "Chope", priceBRL: 7.5, volumeMl: 300 },
+      { type: "lata", label: "Lata", priceBRL: 6, volumeMl: 350 },
+    ],
+    hasHappyHour: true,
+    happyHourDetails: "Seg–Sex 18h–20h: chope R$ 5",
+    createdAt: "2024-02-20T10:00:00Z",
+  },
+];
+
+// São Paulo center for initial map view
+export const SAO_PAULO_CENTER = { lat: -23.5505, lng: -46.6333 } as const;
+export const DEFAULT_ZOOM = 13;

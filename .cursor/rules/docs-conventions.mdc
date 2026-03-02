@@ -1,0 +1,11 @@
+---
+description: Keep docs/ updated with every new feature or task
+alwaysApply: true
+---
+
+# Documentação contínua
+
+- Ao implementar uma **nova funcionalidade**, atualize `docs/features.md`: adicione uma seção (##) descrevendo o que faz, onde aparece na UI e os arquivos principais.
+- Ao **alterar comportamento** de uma feature existente (filtros, fluxos, integrações), atualize a seção correspondente em `docs/features.md`.
+- Use `docs/README.md` como índice; adicione novos documentos à tabela se criar arquivos além de `features.md`.
+- Mantenha a documentação concisa e alinhada ao código (nomes de componentes, props, estado).

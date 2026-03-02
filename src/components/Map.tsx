@@ -1,0 +1,297 @@
+"use client";
+
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  useJsApiLoader,
+  GoogleMap,
+  Marker,
+  InfoWindow,
+} from "@react-google-maps/api";
+import type { Venue } from "@/types";
+
+const MAP_CONTAINER_STYLE = { width: "100%", height: "100%" };
+
+export interface MapBounds {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
+export interface MapHandle {
+  getCurrentBounds(): { bounds: MapBounds; zoom: number } | null;
+}
+
+const BOUNDS_DEBOUNCE_MS = 800;
+const MIN_ZOOM_FOR_BARS = 12;
+
+interface MapProps {
+  venues: Venue[];
+  center: { lat: number; lng: number };
+  zoom: number;
+  searchMarker?: { lat: number; lng: number } | null;
+  selectedVenueId: string | null;
+  onSelectVenue: (id: string | null) => void;
+  getMinPrice: (v: Venue) => number;
+  onBoundsChange?: (bounds: MapBounds, zoom: number) => void;
+}
+
+function makePriceBubbleIconUrl(priceLabel: string, isSelected: boolean): string {
+  const bg = isSelected ? "#fbbf24" : "#dc2626";
+  const border = isSelected ? "#fef3c7" : "#b91c1c";
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="56" height="32" viewBox="0 0 56 32">
+      <defs>
+        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.35"/>
+        </filter>
+      </defs>
+      <path d="M4 0 L52 0 Q56 0 56 4 L56 22 Q56 26 52 26 L12 26 L6 32 L6 26 L4 26 Q0 26 0 22 L0 4 Q0 0 4 0 Z" 
+            fill="${bg}" stroke="${border}" stroke-width="2" filter="url(#shadow)"/>
+      <text x="28" y="18" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-weight="700" font-size="12">${priceLabel}</text>
+    </svg>
+  `.trim();
+  return "data:image/svg+xml," + encodeURIComponent(svg);
+}
+
+export const Map = forwardRef<MapHandle, MapProps>(function Map(
+  {
+    venues,
+    center,
+    zoom,
+    searchMarker = null,
+    selectedVenueId,
+    onSelectVenue,
+    getMinPrice,
+    onBoundsChange,
+  },
+  ref
+) {
+  const [map, setMap] = useState<google.maps.Map | null>(null);
+  const initialCenterSet = useRef(false);
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const boundsListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastReportedRef = useRef<string>("");
+  const [loadTimeout, setLoadTimeout] = useState(false);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getCurrentBounds(): { bounds: MapBounds; zoom: number } | null {
+        if (!map) return null;
+        const bounds = map.getBounds();
+        const zoomLevel = map.getZoom();
+        if (!bounds || zoomLevel == null) return null;
+        const ne = bounds.getNorthEast();
+        const sw = bounds.getSouthWest();
+        return {
+          bounds: {
+            south: sw.lat(),
+            west: sw.lng(),
+            north: ne.lat(),
+            east: ne.lng(),
+          },
+          zoom: zoomLevel,
+        };
+      },
+    }),
+    [map]
+  );
+
+  const { isLoaded, loadError } = useJsApiLoader({
+    googleMapsApiKey: apiKey || "",
+    preventGoogleFontsLoading: true,
+    version: "weekly",
+  });
+
+  // If the script doesn't finish loading in 12s, show a hint and retry option
+  useEffect(() => {
+    if (isLoaded || loadError || !apiKey) return;
+    const t = setTimeout(() => setLoadTimeout(true), 12_000);
+    return () => clearTimeout(t);
+  }, [isLoaded, loadError, apiKey]);
+
+  const onLoad = useCallback((mapInstance: google.maps.Map) => {
+    setMap(mapInstance);
+  }, []);
+
+  const onUnmount = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setMap(null);
+    initialCenterSet.current = false;
+  }, []);
+
+  // Pan/zoom when center/zoom props change (e.g. address search)
+  useEffect(() => {
+    if (!map) return;
+    if (!initialCenterSet.current) {
+      initialCenterSet.current = true;
+      return;
+    }
+    map.panTo(center);
+    map.setZoom(zoom);
+  }, [map, center.lat, center.lng, zoom]);
+
+  // Report bounds and zoom on idle so parent can sync state (and clear venues when zoom < 14)
+  useEffect(() => {
+    if (!map || !onBoundsChange) return;
+    const report = () => {
+      const bounds = map.getBounds();
+      const zoomLevel = map.getZoom();
+      if (!bounds || zoomLevel == null) return;
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      const bbox: MapBounds = {
+        south: sw.lat(),
+        west: sw.lng(),
+        north: ne.lat(),
+        east: ne.lng(),
+      };
+      const key = `${zoomLevel}-${bbox.south.toFixed(4)}-${bbox.west.toFixed(4)}`;
+      if (key === lastReportedRef.current) return;
+      lastReportedRef.current = key;
+      onBoundsChange(bbox, zoomLevel);
+    };
+    const onIdle = () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(report, BOUNDS_DEBOUNCE_MS);
+    };
+    boundsListenerRef.current = google.maps.event.addListener(map, "idle", onIdle);
+    const t = setTimeout(report, 300);
+    return () => {
+      if (boundsListenerRef.current) {
+        google.maps.event.removeListener(boundsListenerRef.current);
+        boundsListenerRef.current = null;
+      }
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      clearTimeout(t);
+    };
+  }, [map, onBoundsChange]);
+
+  if (loadError) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-stone-900 rounded-xl text-red-400 text-sm p-4 text-center">
+        Erro ao carregar o mapa. Verifique a chave do Google Maps em .env.local
+      </div>
+    );
+  }
+
+  if (!isLoaded || !apiKey) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-stone-900 rounded-xl p-4">
+        <span className="text-stone-500 text-center">
+          {apiKey ? "Carregando mapa..." : "Configure NEXT_PUBLIC_GOOGLE_MAPS_API_KEY em .env.local"}
+        </span>
+        {loadTimeout && apiKey && (
+          <div className="flex flex-col items-center gap-2 text-center text-sm">
+            <p className="text-amber-200/90">
+              O mapa está demorando. Verifique sua conexão e se a chave do Google está correta.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-lg bg-amber-500 text-stone-950 font-medium hover:bg-amber-400 transition"
+            >
+              Tentar de novo
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <GoogleMap
+      mapContainerStyle={MAP_CONTAINER_STYLE}
+      center={center}
+      zoom={zoom}
+      onLoad={onLoad}
+      onUnmount={onUnmount}
+      options={{
+        zoomControl: true,
+        zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: true,
+        scaleControl: false,
+        styles: [
+          {
+            featureType: "all",
+            elementType: "geometry",
+            stylers: [{ saturation: "-20" }, { lightness: "5" }],
+          },
+          {
+            featureType: "poi",
+            elementType: "labels",
+            stylers: [{ visibility: "off" }],
+          },
+          {
+            featureType: "water",
+            elementType: "geometry",
+            stylers: [{ color: "#1e293b" }],
+          },
+        ],
+      }}
+    >
+      {venues.map((venue) => {
+        const minPrice = getMinPrice(venue);
+        const isSelected = venue.id === selectedVenueId;
+        const priceLabel = Number.isFinite(minPrice)
+          ? `R$ ${minPrice.toFixed(1).replace(".", ",")}`
+          : "?";
+        return (
+          <Marker
+            key={venue.id}
+            position={{ lat: venue.lat, lng: venue.lng }}
+            icon={{
+              url: makePriceBubbleIconUrl(priceLabel, isSelected),
+              scaledSize: new google.maps.Size(56, 32),
+              anchor: new google.maps.Point(8, 26),
+            }}
+            onClick={() => onSelectVenue(venue.id)}
+          >
+            {selectedVenueId === venue.id && (
+              <InfoWindow
+                position={{ lat: venue.lat, lng: venue.lng }}
+                onCloseClick={() => onSelectVenue(null)}
+              >
+                <div className="min-w-[200px] p-1 text-stone-800">
+                  <p className="font-semibold text-amber-700">{venue.name}</p>
+                  <p className="text-stone-600 text-sm mt-0.5">{venue.neighborhood}</p>
+                  <p className="text-stone-700 text-sm mt-2">
+                    {venue.beerPrices.length === 0
+                      ? "Preços não informados"
+                      : venue.beerPrices
+                          .map((p) => `${p.label}: R$ ${p.priceBRL.toFixed(2)}`)
+                          .join(" · ")}
+                  </p>
+                  <p className="text-amber-600 font-medium mt-1">
+                    {Number.isFinite(minPrice) ? `A partir de R$ ${minPrice.toFixed(2)}` : "—"}
+                  </p>
+                  {venue.hasHappyHour && (
+                    <p className="text-amber-700 text-xs mt-1">Happy hour</p>
+                  )}
+                </div>
+              </InfoWindow>
+            )}
+          </Marker>
+        );
+      })}
+
+      {searchMarker && (
+        <Marker
+          position={{ lat: searchMarker.lat, lng: searchMarker.lng }}
+          icon={{
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: "#3b82f6",
+            fillOpacity: 1,
+            strokeColor: "#93c5fd",
+            strokeWeight: 2,
+          }}
+        />
+      )}
+    </GoogleMap>
+  );
+});
