@@ -9,7 +9,7 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Cerveja Barato | Mapa de preços de cerveja - São Paulo",
+  title: "BrejaMap | Mapa de preços de cerveja - São Paulo",
   description: "Encontre bares e cervejas com os melhores preços no estado de São Paulo.",
 };
 

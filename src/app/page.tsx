@@ -391,7 +391,7 @@ export default function Home() {
         <div className="px-4 pt-3 pb-2">
           <div className="flex items-center justify-between gap-2 mb-3">
             <h1 className="text-lg font-bold text-amber-400 tracking-tight">
-              Cerveja Barato
+              BrejaMap
             </h1>
             <p className="text-stone-500 text-xs hidden sm:block">
               Estado de São Paulo
@@ -475,10 +475,12 @@ export default function Home() {
           />
           <VenueList
             venues={filteredAndSortedVenues}
+            totalVenuesCount={venues.length}
             selectedVenueId={selectedVenueId}
             onSelectVenue={setSelectedVenueId}
             beerTypeLabels={BEER_TYPE_LABELS}
             getMinPrice={getMinBeerPrice}
+            onAddBar={() => setAddModalOpen(true)}
           />
         </aside>
 
@@ -557,6 +559,8 @@ export default function Home() {
         isOpen={addModalOpen}
         onClose={() => setAddModalOpen(false)}
         onSubmit={handleAddVenue}
+        initialLat={mapCenter.lat}
+        initialLng={mapCenter.lng}
       />
     </div>
   );

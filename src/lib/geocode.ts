@@ -15,7 +15,7 @@ export interface NominatimResult {
 }
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
-const USER_AGENT = "CervejaBarato/1.0 (map app; contact optional)";
+const USER_AGENT = "BrejaMap/1.0 (map app; contact optional)";
 
 export async function searchAddress(
   query: string

@@ -6,7 +6,7 @@
 import type { Venue } from "@/types";
 
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
-const OVERPASS_USER_AGENT = "CervejaBarato/1.0 (beer map; low request rate)";
+const OVERPASS_USER_AGENT = "BrejaMap/1.0 (beer map; low request rate)";
 
 /** Thrown when Overpass returns 429 Too Many Requests. */
 export class OverpassRateLimitError extends Error {

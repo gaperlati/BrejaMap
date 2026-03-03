@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { Venue, BeerType, BeerPrice } from "@/types";
+import { searchAddress, type NominatimResult } from "@/lib/geocode";
 
 const BEER_TYPES: { value: BeerType; label: string }[] = [
   { value: "chope", label: "Chope" },
@@ -11,27 +12,94 @@ const BEER_TYPES: { value: BeerType; label: string }[] = [
   { value: "outro", label: "Outro" },
 ];
 
+const SAO_PAULO_CENTER = { lat: -23.5505, lng: -46.6333 };
+
 interface AddVenueModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (venue: Omit<Venue, "id" | "createdAt">) => void;
+  /** Map center when modal opened; used as default location if user doesn't search address. */
+  initialLat?: number;
+  initialLng?: number;
 }
 
 export function AddVenueModal({
   isOpen,
   onClose,
   onSubmit,
+  initialLat = SAO_PAULO_CENTER.lat,
+  initialLng = SAO_PAULO_CENTER.lng,
 }: AddVenueModalProps) {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
-  const [neighborhood, setNeighborhood] = useState("");
+  const [neighborhood, setNeighborhood] = useState("São Paulo");
   const [city, setCity] = useState("São Paulo");
   const [state, setState] = useState("SP");
-  const [lat, setLat] = useState("");
-  const [lng, setLng] = useState("");
+  const [lat, setLat] = useState(initialLat);
+  const [lng, setLng] = useState(initialLng);
   const [hasHappyHour, setHasHappyHour] = useState(false);
   const [happyHourDetails, setHappyHourDetails] = useState("");
   const [prices, setPrices] = useState<BeerPrice[]>([]);
+
+  const [locationQuery, setLocationQuery] = useState("");
+  const [locationResults, setLocationResults] = useState<NominatimResult[]>([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationOpen, setLocationOpen] = useState(false);
+  const locationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setLat(initialLat);
+      setLng(initialLng);
+    }
+  }, [isOpen, initialLat, initialLng]);
+
+  const doLocationSearch = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setLocationResults([]);
+      return;
+    }
+    setLocationLoading(true);
+    try {
+      const data = await searchAddress(q);
+      setLocationResults(data);
+      setLocationOpen(true);
+    } catch {
+      setLocationResults([]);
+    } finally {
+      setLocationLoading(false);
+    }
+  }, []);
+
+  const handleLocationChange = (value: string) => {
+    setLocationQuery(value);
+    if (locationDebounceRef.current) clearTimeout(locationDebounceRef.current);
+    if (!value.trim()) {
+      setLocationResults([]);
+      setLocationOpen(false);
+      return;
+    }
+    locationDebounceRef.current = setTimeout(() => doLocationSearch(value), 400);
+  };
+
+  const handleLocationSelect = (r: NominatimResult) => {
+    const latNum = parseFloat(r.lat);
+    const lngNum = parseFloat(r.lon);
+    if (!Number.isNaN(latNum) && !Number.isNaN(lngNum)) {
+      setLat(latNum);
+      setLng(lngNum);
+    }
+    setAddress(r.display_name);
+    const addr = r.address;
+    if (addr) {
+      setNeighborhood(addr.suburb ?? addr.road ?? "—");
+      setCity(addr.city ?? addr.town ?? addr.village ?? "São Paulo");
+      setState(addr.state ?? "SP");
+    }
+    setLocationQuery(r.display_name);
+    setLocationResults([]);
+    setLocationOpen(false);
+  };
 
   const addPrice = (type: BeerType, label: string, priceBRL: number) => {
     setPrices((prev) => {
@@ -47,16 +115,14 @@ export function AddVenueModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || prices.length === 0) return;
-    const latNum = parseFloat(lat) || -23.5505;
-    const lngNum = parseFloat(lng) || -46.6333;
     onSubmit({
       name: name.trim(),
       address: address.trim() || "Endereço não informado",
       neighborhood: neighborhood.trim() || "São Paulo",
       city: city.trim() || "São Paulo",
       state: state.trim() || "SP",
-      lat: latNum,
-      lng: lngNum,
+      lat,
+      lng,
       beerPrices: prices,
       hasHappyHour,
       happyHourDetails: hasHappyHour ? happyHourDetails.trim() : undefined,
@@ -67,11 +133,14 @@ export function AddVenueModal({
   const resetForm = () => {
     setName("");
     setAddress("");
-    setNeighborhood("");
+    setNeighborhood("São Paulo");
     setCity("São Paulo");
     setState("SP");
-    setLat("");
-    setLng("");
+    setLat(initialLat);
+    setLng(initialLng);
+    setLocationQuery("");
+    setLocationResults([]);
+    setLocationOpen(false);
     setHasHappyHour(false);
     setHappyHourDetails("");
     setPrices([]);
@@ -122,6 +191,45 @@ export function AddVenueModal({
 
           <div>
             <label className="block text-sm font-medium text-stone-400 mb-1">
+              Localização
+            </label>
+            <p className="text-xs text-stone-500 mb-2">
+              Busque o endereço para preencher o pin no mapa e os campos abaixo. Se não buscar, usamos o centro atual do mapa.
+            </p>
+            <div className="relative">
+              <input
+                type="text"
+                value={locationQuery}
+                onChange={(e) => handleLocationChange(e.target.value)}
+                onFocus={() => locationResults.length > 0 && setLocationOpen(true)}
+                onBlur={() => setTimeout(() => setLocationOpen(false), 200)}
+                placeholder="Buscar endereço..."
+                className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100 placeholder-stone-500"
+              />
+              {locationLoading && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 text-xs">
+                  Buscando...
+                </span>
+              )}
+              {locationOpen && locationResults.length > 0 && (
+                <ul className="absolute top-full left-0 right-0 mt-1 py-1 rounded-lg bg-stone-800 border border-stone-700 shadow-xl z-50 max-h-48 overflow-y-auto">
+                  {locationResults.map((r) => (
+                    <li
+                      key={r.place_id}
+                      role="option"
+                      onClick={() => handleLocationSelect(r)}
+                      className="px-3 py-2 text-sm text-stone-200 hover:bg-stone-700 cursor-pointer border-b border-stone-700/50 last:border-0"
+                    >
+                      <span className="block truncate">{r.display_name}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-stone-400 mb-1">
               Endereço
             </label>
             <input
@@ -152,33 +260,6 @@ export function AddVenueModal({
                 type="text"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-sm font-medium text-stone-400 mb-1">
-                Lat
-              </label>
-              <input
-                type="text"
-                value={lat}
-                onChange={(e) => setLat(e.target.value)}
-                placeholder="-23.55"
-                className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-stone-400 mb-1">
-                Lng
-              </label>
-              <input
-                type="text"
-                value={lng}
-                onChange={(e) => setLng(e.target.value)}
-                placeholder="-46.63"
                 className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
               />
             </div>

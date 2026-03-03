@@ -1,4 +1,4 @@
--- Cerveja Barato: venues and beer_prices tables
+-- BrejaMap: venues and beer_prices tables
 -- Run this in Supabase SQL Editor or via supabase db push
 
 -- Venues (bars/pubs)

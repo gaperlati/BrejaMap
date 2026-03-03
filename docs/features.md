@@ -1,4 +1,4 @@
-# Cerveja Barato – Funcionalidades
+# BrejaMap – Funcionalidades
 
 Documentação das funcionalidades atuais do app. Atualizada conforme novas tarefas e features são implementadas.
 
@@ -6,7 +6,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 ## Visão geral
 
-**Cerveja Barato** é um mapa de preços de cerveja para o estado de São Paulo. O usuário encontra bares com os melhores preços, filtra por tipo de bebida, bairro e happy hour, e alterna entre vista de mapa e lista.
+**BrejaMap** é um mapa de preços de cerveja para o estado de São Paulo. O usuário encontra bares com os melhores preços, filtra por tipo de bebida, bairro e happy hour, e alterna entre vista de mapa e lista.
 
 - **Stack**: Next.js 14, React 18, TypeScript, Tailwind CSS, Google Maps JavaScript API. **Backend**: Supabase (Postgres) para venues e preços.
 - **Dados**: o mapa e a lista de bares vêm do **nosso backend** (GET /api/venues por bounds). Não há mais chamadas ao Google Places no cliente; a latência e o payload são controlados pelo nosso banco. Mock inicial em memória quando o backend não está configurado.
@@ -65,6 +65,18 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 ---
 
+## 3.2. Deploy e dados iniciais (evitar mapa vazio)
+
+Ao publicar o app, o Supabase começa vazio. Opções para o usuário não ficar frustrado:
+
+1. **Manter mock em produção** (comportamento atual): o app inicia com 6 bares em memória (`MOCK_VENUES`). Ao clicar em "Buscar bares", a API devolve vazia e esses bares continuam visíveis. Funciona, mas os dados são placeholder.
+2. **Rodar o seed no deploy**: após criar o projeto no Supabase e rodar a migração, executar `supabase/seed.sql` no SQL Editor. Os mesmos 6 bares passam a existir no banco; "Buscar bares" em São Paulo/Campinas já retorna dados reais.
+3. **Empty state amigável**: quando não há nenhum bar na região (lista vazia sem filtros), a lista exibe "Nenhum bar nesta região ainda. Seja o primeiro a adicionar!" e botão **Adicionar bar**, convidando o usuário a contribuir.
+4. **Fallback Overpass (futuro)**: o backend pode, quando o Supabase retornar 0 venues para um bounds, chamar a API Overpass (OpenStreetMap) e devolver bares da região sem preços — o mapa sempre mostra algo.
+5. **Google Places como fallback**: mesma ideia do Overpass, com custo de API e necessidade de ativar Places API no Google Cloud.
+
+---
+
 ## 4. Toggle Mapa / Lista
 
 - Dois botões no header: **Mapa** e **Lista**.
@@ -109,13 +121,13 @@ Ao selecionar um bar no mapa ou na lista:
 - Acesso pelo botão **“Adicionar bar”** na barra inferior.
 - Modal com formulário:
   - Nome do bar * (obrigatório)
-  - Endereço, Bairro, Cidade, Estado
-  - Lat / Lng (opcional; default São Paulo)
+  - **Localização**: campo “Buscar endereço” que usa **Nominatim (OpenStreetMap)** para geocodificar; ao selecionar um resultado, preenche coordenadas (lat/lng) e os campos Endereço, Bairro, Cidade e Estado. Se o usuário não buscar endereço, usam-se as coordenadas do **centro atual do mapa** (não há mais campos Lat/Lng manuais).
+  - Endereço, Bairro, Cidade, Estado (editáveis; podem vir preenchidos pela busca de localização)
   - Preços de cerveja *: um ou mais tipos (Chope, Long neck, Lata, Garrafa, Outro) com valor em R$
   - Checkbox “Tem happy hour” + campo “Detalhes do happy hour”
 - Ao salvar: novo bar é criado com `id` (UUID), `createdAt`, `userAdded: true` e adicionado à lista em memória; preços aparecem como “não verificados” no detalhe.
 
-**Arquivos**: `src/components/AddVenueModal.tsx`, `src/app/page.tsx`.
+**Arquivos**: `src/components/AddVenueModal.tsx`, `src/app/page.tsx`, `src/lib/geocode.ts`.
 
 ---
 
