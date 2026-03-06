@@ -75,12 +75,14 @@ export function VenueSheet({
                 Happy hour
               </span>
             )}
-            {venue.beerPrices.slice(0, 3).map((p) => (
+            {venue.beerPrices.slice(0, 3).map((p, i) => (
               <span
-                key={p.type}
+                key={`price-${i}`}
                 className="px-2.5 py-1 rounded-md bg-stone-700 text-stone-300 text-xs"
               >
-                {beerTypeLabels[p.type]}: R$ {p.priceBRL.toFixed(2)}
+                {p.label?.trim()
+                  ? `${p.label} R$ ${p.priceBRL.toFixed(2)}`
+                  : `${beerTypeLabels[p.type]} R$ ${p.priceBRL.toFixed(2)}`}
               </span>
             ))}
           </div>
