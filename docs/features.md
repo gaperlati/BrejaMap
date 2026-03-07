@@ -103,7 +103,7 @@ Ao publicar o app, o Supabase começa vazio. Opções para o usuário não ficar
 Ao selecionar um bar no mapa ou na lista:
 
 - **Nome** e **endereço completo** (endereço, bairro, cidade, estado).
-- **Tags**: quantidade de cervejas servidas ou “Preços não informados”, “Happy hour” (se houver), até 3 tipos com preço quando existirem.
+- **Tags**: quantidade de cervejas servidas ou “Preços não informados”, “Happy hour” (se houver), até 3 preços exibidos como "Marca R$ X" ou "Tipo R$ X" quando não há marca.
 - **Preço mínimo**: “A partir de R$ X,X” ou “—” quando não há preços.
 - **Detalhes do happy hour**: exibidos quando existem (`happyHourDetails`).
 - **Aviso “Preços não verificados”**: quando o bar foi adicionado por usuário (`userAdded === true`).
@@ -123,7 +123,7 @@ Ao selecionar um bar no mapa ou na lista:
   - Nome do bar * (obrigatório)
   - **Localização**: campo “Buscar endereço” que usa **Nominatim (OpenStreetMap)** para geocodificar; ao selecionar um resultado, preenche coordenadas (lat/lng) e os campos Endereço, Bairro, Cidade e Estado. Se o usuário não buscar endereço, usam-se as coordenadas do **centro atual do mapa** (não há mais campos Lat/Lng manuais).
   - Endereço, Bairro, Cidade, Estado (editáveis; podem vir preenchidos pela busca de localização)
-  - Preços de cerveja *: um ou mais tipos (Chope, Long neck, Lata, Garrafa, Outro) com valor em R$
+  - Preços de cerveja *: lista dinâmica de entradas (tipo + marca + preço). Cada linha: dropdown de tipo (Chope, Long neck, Lata, Garrafa, Outro), campo "Marca" (ex.: Brahma, Heineken) e valor em R$. Botão "Adicionar cerveja" adiciona nova linha; cada linha pode ser removida (exceto a última). Ao menos uma entrada com preço > 0 é obrigatória. Permite múltiplas marcas por tipo (ex.: Chope Brahma e Chope Heineken).
   - Checkbox “Tem happy hour” + campo “Detalhes do happy hour”
 - Ao salvar: novo bar é criado com `id` (UUID), `createdAt`, `userAdded: true` e adicionado à lista em memória; preços aparecem como “não verificados” no detalhe.
 
@@ -144,7 +144,7 @@ Ao selecionar um bar no mapa ou na lista:
 ## Modelo de dados (resumo)
 
 - **Venue**: id, name, address, neighborhood, city, state, lat, lng, beerPrices (pode ser [] para lugares do Google), hasHappyHour, happyHourDetails?, photoUrl?, createdAt, userAdded?, fromOsm?, fromGoogle?.
-- **BeerPrice**: type (BeerType), label, priceBRL, volumeMl?.
+- **BeerPrice**: type (BeerType), label (marca/nome, ex.: "Brahma" ou "Chope" quando genérico), priceBRL, volumeMl?.
 - **BeerType**: `"chope"` | `"long_neck"` | `"lata"` | `"garrafa"` | `"outro"`.
 - **SortOption**: `"price_asc"` | `"price_desc"` | `"distance"` | `"name"` (distance ainda não usado na UI).
 

@@ -35,12 +35,14 @@ export function VenueCard({
             Preços não informados
           </span>
         ) : (
-          venue.beerPrices.slice(0, 3).map((p) => (
+          venue.beerPrices.slice(0, 3).map((p, i) => (
             <span
-              key={p.type}
+              key={`price-${i}`}
               className="text-xs px-2 py-0.5 rounded bg-stone-800 text-stone-400"
             >
-              {beerTypeLabels[p.type]}: R$ {p.priceBRL.toFixed(2)}
+              {p.label?.trim()
+                ? `${p.label} R$ ${p.priceBRL.toFixed(2)}`
+                : `${beerTypeLabels[p.type]} R$ ${p.priceBRL.toFixed(2)}`}
             </span>
           ))
         )}
