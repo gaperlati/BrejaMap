@@ -28,7 +28,7 @@ export function VenueList({
   const noVenuesAtAll = totalVenuesCount != null && totalVenuesCount === 0;
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="min-h-0 pb-2">
       {isEmpty ? (
         <div className="p-6 text-center text-stone-500 text-sm flex flex-col items-center gap-3">
           {noVenuesAtAll ? (

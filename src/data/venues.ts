@@ -104,8 +104,94 @@ export const MOCK_VENUES: Venue[] = [
     happyHourDetails: "Seg–Sex 18h–20h: chope R$ 5",
     createdAt: "2024-02-20T10:00:00Z",
   },
+  // São Carlos (SP) - amostras para preencher o mapa inicial
+  {
+    id: "sc-1",
+    name: "Bar do Mercado",
+    address: "Rua XV de Novembro, 420",
+    neighborhood: "Centro",
+    city: "São Carlos",
+    state: "SP",
+    lat: -22.0103,
+    lng: -47.8862,
+    beerPrices: [
+      { type: "chope", label: "Chope Brahma", priceBRL: 8.5, volumeMl: 300 },
+      { type: "lata", label: "Heineken", priceBRL: 10.0, volumeMl: 350 },
+      { type: "long_neck", label: "Skol 355ml", priceBRL: 9.0, volumeMl: 355 },
+    ],
+    hasHappyHour: true,
+    happyHourDetails: "Ter–Qui 17h–20h: chope R$ 7",
+    createdAt: "2024-03-01T10:00:00Z",
+  },
+  {
+    id: "sc-2",
+    name: "Cantinho da Cerva",
+    address: "Av. São Carlos, 980",
+    neighborhood: "Jardim América",
+    city: "São Carlos",
+    state: "SP",
+    lat: -22.0106,
+    lng: -47.9025,
+    beerPrices: [
+      { type: "chope", label: "Chope Itaipava", priceBRL: 7.9, volumeMl: 300 },
+      { type: "garrafa", label: "Garrafa 600ml", priceBRL: 14.5, volumeMl: 600 },
+    ],
+    hasHappyHour: false,
+    createdAt: "2024-03-05T10:00:00Z",
+  },
+  {
+    id: "sc-3",
+    name: "Boteco Santa Felícia",
+    address: "Rua 15, 1300",
+    neighborhood: "Santa Felícia",
+    city: "São Carlos",
+    state: "SP",
+    lat: -22.0222,
+    lng: -47.8869,
+    beerPrices: [
+      { type: "lata", label: "Original", priceBRL: 9.5, volumeMl: 350 },
+      { type: "long_neck", label: "Brahma 355ml", priceBRL: 10.5, volumeMl: 355 },
+    ],
+    hasHappyHour: true,
+    happyHourDetails: "Seg–Sex 16h–19h: lata R$ 8",
+    createdAt: "2024-03-10T10:00:00Z",
+  },
+  {
+    id: "sc-4",
+    name: "Beco da Cerveja",
+    address: "Rua Coronel Leopoldo Prado, 210",
+    neighborhood: "Cidade Jardim",
+    city: "São Carlos",
+    state: "SP",
+    lat: -22.0245,
+    lng: -47.8918,
+    beerPrices: [
+      { type: "chope", label: "Chope Skol", priceBRL: 8.2, volumeMl: 300 },
+      { type: "lata", label: "Brahma lata", priceBRL: 8.9, volumeMl: 350 },
+      { type: "garrafa", label: "Garrafa 600ml", priceBRL: 15.0, volumeMl: 600 },
+    ],
+    hasHappyHour: false,
+    createdAt: "2024-03-12T10:00:00Z",
+  },
+  {
+    id: "sc-5",
+    name: "Bar do Parque",
+    address: "Av. Dr. Carlos Botelho, 760",
+    neighborhood: "Vila Prado",
+    city: "São Carlos",
+    state: "SP",
+    lat: -22.0089,
+    lng: -47.8754,
+    beerPrices: [
+      { type: "long_neck", label: "Antarctica 355ml", priceBRL: 9.9, volumeMl: 355 },
+      { type: "chope", label: "Chope local", priceBRL: 8.0, volumeMl: 300 },
+    ],
+    hasHappyHour: true,
+    happyHourDetails: "Sáb 14h–17h: chope R$ 6,50",
+    createdAt: "2024-03-18T10:00:00Z",
+  },
 ];
 
-// São Paulo center for initial map view
-export const SAO_PAULO_CENTER = { lat: -23.5505, lng: -46.6333 } as const;
+// São Carlos center for initial map view fallback
+export const SAO_CARLOS_CENTER = { lat: -22.0174, lng: -47.8860 } as const;
 export const DEFAULT_ZOOM = 13;

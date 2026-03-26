@@ -134,6 +134,18 @@ export async function GET(request: NextRequest) {
  * POST /api/venues - Create a new venue (e.g. from "Adicionar bar").
  */
 export async function POST(request: NextRequest) {
+  // Safety for deploy: block public write operations until Supabase Auth/RLS is in place.
+  // To re-enable writes, set `USER_EDITS_ENABLED=true` in the production environment.
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.USER_EDITS_ENABLED !== "true"
+  ) {
+    return NextResponse.json(
+      { error: "User edits are disabled in production" },
+      { status: 403 }
+    );
+  }
+
   if (!supabase) {
     return NextResponse.json(
       { error: "Database not configured" },
@@ -159,9 +171,62 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (!body.name || typeof body.lat !== "number" || typeof body.lng !== "number") {
+  if (
+    !body.name ||
+    typeof body.lat !== "number" ||
+    typeof body.lng !== "number"
+  ) {
     return NextResponse.json(
       { error: "name, lat, lng required" },
+      { status: 400 }
+    );
+  }
+
+  const name = body.name.trim();
+  const lat = body.lat;
+  const lng = body.lng;
+  const happyHourDetails = (body.happyHourDetails ?? "").trim();
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return NextResponse.json({ error: "Invalid lat/lng" }, { status: 400 });
+  }
+
+  if (name.length < 2 || name.length > 80) {
+    return NextResponse.json({ error: "Invalid name length" }, { status: 400 });
+  }
+
+  const ALLOWED_BEER_TYPES: BeerType[] = ["chope", "long_neck", "lata", "garrafa", "outro"];
+  const maxBeerPrices = 20;
+  const maxHappyHourDetailsLen = 160;
+
+  const sanitizedBeerPrices: { type: BeerType; label: string; priceBRL: number; volumeMl?: number }[] = Array.isArray(body.beerPrices)
+    ? body.beerPrices.slice(0, maxBeerPrices).flatMap((p) => {
+        if (!p || typeof p !== "object") return [];
+        const type = p.type as BeerType;
+        if (!ALLOWED_BEER_TYPES.includes(type)) return [];
+        const label = (p.label ?? "").trim();
+        const priceBRL = Number(p.priceBRL);
+        const volumeMl =
+          p.volumeMl == null ? undefined : Number(p.volumeMl);
+
+        if (label.length < 1 || label.length > 60) return [];
+        if (!Number.isFinite(priceBRL) || priceBRL < 0 || priceBRL > 5000) return [];
+        if (volumeMl != null && (!Number.isFinite(volumeMl) || volumeMl < 0 || volumeMl > 5000)) return [];
+
+        return [
+          {
+            type,
+            label,
+            priceBRL,
+            ...(volumeMl != null ? { volumeMl } : {}),
+          },
+        ];
+      })
+    : [];
+
+  if (sanitizedBeerPrices.length === 0) {
+    return NextResponse.json(
+      { error: "At least one valid beer price is required" },
       { status: 400 }
     );
   }
@@ -169,15 +234,18 @@ export async function POST(request: NextRequest) {
   const { data: venueRow, error: insertVenueError } = await supabase
     .from("venues")
     .insert({
-      name: body.name.trim(),
+      name,
       address: (body.address ?? "").trim() || "Endereço não informado",
       neighborhood: (body.neighborhood ?? "").trim() || "São Paulo",
       city: (body.city ?? "").trim() || "São Paulo",
       state: (body.state ?? "").trim() || "SP",
-      lat: body.lat,
-      lng: body.lng,
+      lat,
+      lng,
       has_happy_hour: body.hasHappyHour ?? false,
-      happy_hour_details: body.happyHourDetails?.trim() || null,
+      happy_hour_details:
+        (body.hasHappyHour ?? false) && happyHourDetails
+          ? happyHourDetails.slice(0, maxHappyHourDetailsLen)
+          : null,
       user_added: true,
       source: "user",
     })
@@ -192,14 +260,15 @@ export async function POST(request: NextRequest) {
   }
 
   const venueId = (venueRow as VenueRow).id;
-  if (body.beerPrices?.length) {
-    const rows = body.beerPrices.map((p) => ({
+  if (sanitizedBeerPrices.length > 0) {
+    const rows = sanitizedBeerPrices.map((p) => ({
       venue_id: venueId,
       type: p.type,
       label: p.label,
       price_brl: p.priceBRL,
       volume_ml: p.volumeMl ?? null,
     }));
+
     await supabase.from("beer_prices").insert(rows);
   }
 
@@ -208,6 +277,9 @@ export async function POST(request: NextRequest) {
     .select("*")
     .eq("venue_id", venueId);
 
-  const venue = rowToVenue(venueRow as VenueRow, (priceRows ?? []) as BeerPriceRow[]);
+  const venue = rowToVenue(
+    venueRow as VenueRow,
+    (priceRows ?? []) as BeerPriceRow[]
+  );
   return NextResponse.json({ venue });
 }

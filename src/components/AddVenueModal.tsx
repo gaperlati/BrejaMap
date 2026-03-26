@@ -16,13 +16,17 @@ type PriceRow = { type: BeerType; label: string; priceBRL: number };
 
 const initialPriceRow = (): PriceRow => ({ type: "chope", label: "", priceBRL: 0 });
 
+<<<<<<< HEAD
 const SAO_PAULO_CENTER = { lat: -23.5505, lng: -46.6333 };
+=======
+const SAO_CARLOS_CENTER = { lat: -22.0174, lng: -47.8860 };
+>>>>>>> 1679269 (checkpoint before checking out cursor/brejamap-roadmap-document-1020)
 
 interface AddVenueModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (venue: Omit<Venue, "id" | "createdAt">) => void;
-  /** Map center when modal opened; used as default location if user doesn't search address. */
+  /** Map center when modal opened. */
   initialLat?: number;
   initialLng?: number;
 }
@@ -31,8 +35,8 @@ export function AddVenueModal({
   isOpen,
   onClose,
   onSubmit,
-  initialLat = SAO_PAULO_CENTER.lat,
-  initialLng = SAO_PAULO_CENTER.lng,
+  initialLat = SAO_CARLOS_CENTER.lat,
+  initialLng = SAO_CARLOS_CENTER.lng,
 }: AddVenueModalProps) {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -49,6 +53,7 @@ export function AddVenueModal({
   const [locationResults, setLocationResults] = useState<NominatimResult[]>([]);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
+  const [locationSelected, setLocationSelected] = useState(false);
   const locationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -77,6 +82,7 @@ export function AddVenueModal({
 
   const handleLocationChange = (value: string) => {
     setLocationQuery(value);
+    setLocationSelected(false);
     if (locationDebounceRef.current) clearTimeout(locationDebounceRef.current);
     if (!value.trim()) {
       setLocationResults([]);
@@ -103,6 +109,7 @@ export function AddVenueModal({
     setLocationQuery(r.display_name);
     setLocationResults([]);
     setLocationOpen(false);
+    setLocationSelected(true);
   };
 
   const addPriceRow = () => {
@@ -132,10 +139,14 @@ export function AddVenueModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const beerPrices = validBeerPrices();
+<<<<<<< HEAD
     if (!name.trim() || beerPrices.length === 0) return;
+=======
+    if (!name.trim() || !locationSelected || !address.trim() || beerPrices.length === 0) return;
+>>>>>>> 1679269 (checkpoint before checking out cursor/brejamap-roadmap-document-1020)
     onSubmit({
       name: name.trim(),
-      address: address.trim() || "Endereço não informado",
+      address: address.trim(),
       neighborhood: neighborhood.trim() || "São Paulo",
       city: city.trim() || "São Paulo",
       state: state.trim() || "SP",
@@ -159,6 +170,7 @@ export function AddVenueModal({
     setLocationQuery("");
     setLocationResults([]);
     setLocationOpen(false);
+    setLocationSelected(false);
     setHasHappyHour(false);
     setHappyHourDetails("");
     setPriceRows([initialPriceRow()]);
@@ -211,9 +223,6 @@ export function AddVenueModal({
             <label className="block text-sm font-medium text-stone-400 mb-1">
               Localização
             </label>
-            <p className="text-xs text-stone-500 mb-2">
-              Busque o endereço para preencher o pin no mapa e os campos abaixo. Se não buscar, usamos o centro atual do mapa.
-            </p>
             <div className="relative">
               <input
                 type="text"
@@ -244,6 +253,11 @@ export function AddVenueModal({
                 </ul>
               )}
             </div>
+            {!locationSelected && locationQuery.trim().length > 0 && (
+              <p className="text-xs text-amber-300 mt-2">
+                Selecione um endereço da lista para salvar o bar.
+              </p>
+            )}
           </div>
 
           <div>
@@ -384,7 +398,11 @@ export function AddVenueModal({
             </button>
             <button
               type="submit"
+<<<<<<< HEAD
               disabled={!name.trim() || validBeerPrices().length === 0}
+=======
+              disabled={!name.trim() || !locationSelected || validBeerPrices().length === 0}
+>>>>>>> 1679269 (checkpoint before checking out cursor/brejamap-roadmap-document-1020)
               className="px-4 py-2 rounded-lg bg-amber-500 text-stone-950 font-medium hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Salvar bar

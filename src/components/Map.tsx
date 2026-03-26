@@ -11,6 +11,27 @@ import type { Venue } from "@/types";
 
 const MAP_CONTAINER_STYLE = { width: "100%", height: "100%" };
 
+/** Below Tailwind `sm` (640px): hide native controls so they don’t overlap custom UI (e.g. “Onde estou”). */
+const MOBILE_MAP_MAX_WIDTH_PX = 639;
+
+const MAP_BASE_STYLES: google.maps.MapTypeStyle[] = [
+  {
+    featureType: "all",
+    elementType: "geometry",
+    stylers: [{ saturation: "-20" }, { lightness: "5" }],
+  },
+  {
+    featureType: "poi",
+    elementType: "labels",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [{ color: "#1e293b" }],
+  },
+];
+
 export interface MapBounds {
   south: number;
   west: number;
@@ -22,7 +43,9 @@ export interface MapHandle {
   getCurrentBounds(): { bounds: MapBounds; zoom: number } | null;
 }
 
-const BOUNDS_DEBOUNCE_MS = 800;
+const BOUNDS_DEBOUNCE_MS = 250;
+// Throttle for reporting bounds during movement so venues can load more continuously.
+const BOUNDS_CHANGED_THROTTLE_MS = 400;
 const MIN_ZOOM_FOR_BARS = 12;
 
 interface MapProps {
@@ -33,7 +56,11 @@ interface MapProps {
   selectedVenueId: string | null;
   onSelectVenue: (id: string | null) => void;
   getMinPrice: (v: Venue) => number;
-  onBoundsChange?: (bounds: MapBounds, zoom: number) => void;
+  onBoundsChange?: (
+    bounds: MapBounds,
+    zoom: number,
+    reason: "idle" | "changing"
+  ) => void;
 }
 
 function makePriceBubbleIconUrl(priceLabel: string, isSelected: boolean): string {
@@ -74,6 +101,18 @@ export const Map = forwardRef<MapHandle, MapProps>(function Map(
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastReportedRef = useRef<string>("");
   const [loadTimeout, setLoadTimeout] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia(`(max-width: ${MOBILE_MAP_MAX_WIDTH_PX}px)`).matches
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_MAP_MAX_WIDTH_PX}px)`);
+    const onChange = () => setIsMobileViewport(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
 
   useImperativeHandle(
     ref,
@@ -122,6 +161,25 @@ export const Map = forwardRef<MapHandle, MapProps>(function Map(
     initialCenterSet.current = false;
   }, []);
 
+  // Keep native controls in sync when viewport crosses mobile breakpoint (e.g. rotate device).
+  useEffect(() => {
+    if (!map) return;
+    map.setOptions({
+      disableDefaultUI: true,
+      zoomControl: !isMobileViewport,
+      ...(isMobileViewport
+        ? {}
+        : { zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM } }),
+      fullscreenControl: !isMobileViewport,
+      mapTypeControl: false,
+      streetViewControl: false,
+      scaleControl: false,
+      cameraControl: false,
+      rotateControl: false,
+      panControl: false,
+    });
+  }, [map, isMobileViewport]);
+
   // Pan/zoom when center/zoom props change (e.g. address search)
   useEffect(() => {
     if (!map) return;
@@ -136,7 +194,7 @@ export const Map = forwardRef<MapHandle, MapProps>(function Map(
   // Report bounds and zoom on idle so parent can sync state (and clear venues when zoom < 14)
   useEffect(() => {
     if (!map || !onBoundsChange) return;
-    const report = () => {
+    const report = (reason: "idle" | "changing") => {
       const bounds = map.getBounds();
       const zoomLevel = map.getZoom();
       if (!bounds || zoomLevel == null) return;
@@ -151,18 +209,39 @@ export const Map = forwardRef<MapHandle, MapProps>(function Map(
       const key = `${zoomLevel}-${bbox.south.toFixed(4)}-${bbox.west.toFixed(4)}`;
       if (key === lastReportedRef.current) return;
       lastReportedRef.current = key;
-      onBoundsChange(bbox, zoomLevel);
+      onBoundsChange(bbox, zoomLevel, reason);
     };
+
+    let lastBoundsChangedReportAt = 0;
+    const onBoundsChanged = () => {
+      const now = Date.now();
+      if (now - lastBoundsChangedReportAt < BOUNDS_CHANGED_THROTTLE_MS) return;
+      lastBoundsChangedReportAt = now;
+      report("changing"); // Throttled direct report for smoother loading while moving.
+    };
+
     const onIdle = () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(report, BOUNDS_DEBOUNCE_MS);
+      debounceRef.current = setTimeout(() => report("idle"), BOUNDS_DEBOUNCE_MS);
     };
+
+    // Idle: final report after movement settles.
     boundsListenerRef.current = google.maps.event.addListener(map, "idle", onIdle);
-    const t = setTimeout(report, 300);
+    // Bounds changed: keep parent in sync while the user moves the map.
+    const boundsChangedListener = google.maps.event.addListener(
+      map,
+      "bounds_changed",
+      onBoundsChanged
+    );
+
+    const t = setTimeout(() => report("idle"), 300);
     return () => {
       if (boundsListenerRef.current) {
         google.maps.event.removeListener(boundsListenerRef.current);
         boundsListenerRef.current = null;
+      }
+      if (boundsChangedListener) {
+        google.maps.event.removeListener(boundsChangedListener);
       }
       if (debounceRef.current) clearTimeout(debounceRef.current);
       clearTimeout(t);
@@ -209,29 +288,19 @@ export const Map = forwardRef<MapHandle, MapProps>(function Map(
       onLoad={onLoad}
       onUnmount={onUnmount}
       options={{
-        zoomControl: true,
-        zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
+        disableDefaultUI: true,
+        zoomControl: !isMobileViewport,
+        ...(isMobileViewport
+          ? {}
+          : { zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM } }),
+        fullscreenControl: !isMobileViewport,
         mapTypeControl: false,
         streetViewControl: false,
-        fullscreenControl: true,
         scaleControl: false,
-        styles: [
-          {
-            featureType: "all",
-            elementType: "geometry",
-            stylers: [{ saturation: "-20" }, { lightness: "5" }],
-          },
-          {
-            featureType: "poi",
-            elementType: "labels",
-            stylers: [{ visibility: "off" }],
-          },
-          {
-            featureType: "water",
-            elementType: "geometry",
-            stylers: [{ color: "#1e293b" }],
-          },
-        ],
+        cameraControl: false,
+        rotateControl: false,
+        panControl: false,
+        styles: MAP_BASE_STYLES,
       }}
     >
       {venues.map((venue) => {

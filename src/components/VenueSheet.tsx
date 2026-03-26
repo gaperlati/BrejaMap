@@ -96,14 +96,20 @@ export function VenueSheet({
             </p>
           )}
 
-          <div className="flex gap-3 mt-5">
+          <div
+            className="mt-5 -mx-1 flex flex-nowrap gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] sm:mx-0 sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden"
+            role="toolbar"
+            aria-label="Ações do bar"
+          >
             {onAddPrices && (
               <button
                 type="button"
                 onClick={() => onAddPrices(venue)}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500 text-stone-950 font-medium hover:bg-amber-400 transition"
+                className="flex min-h-[2.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-amber-500 px-2.5 py-2.5 text-xs font-medium text-stone-950 transition hover:bg-amber-400 sm:min-w-0 sm:flex-1 sm:gap-2 sm:px-3 sm:py-3 sm:text-sm"
               >
-                <span aria-hidden>🍺</span>
+                <span aria-hidden className="shrink-0">
+                  🍺
+                </span>
                 {venue.beerPrices.length === 0 ? "Adicionar preços" : "Editar preços"}
               </button>
             )}
@@ -111,19 +117,13 @@ export function VenueSheet({
               href={mapsUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-stone-700 text-stone-100 font-medium hover:bg-stone-600 transition"
+              className="flex min-h-[2.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-stone-700 px-2.5 py-2.5 text-xs font-medium text-stone-100 transition hover:bg-stone-600 sm:min-w-0 sm:flex-1 sm:gap-2 sm:px-3 sm:py-3 sm:text-sm"
             >
-              <span aria-hidden>🚶</span>
+              <span aria-hidden className="shrink-0">
+                🚶
+              </span>
               Como chegar
             </a>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500 text-stone-950 font-medium hover:bg-amber-400 transition"
-            >
-              <span aria-hidden>ℹ️</span>
-              Ver mais
-            </button>
           </div>
         </div>
       </div>

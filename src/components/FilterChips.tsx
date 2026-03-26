@@ -26,7 +26,6 @@ export function FilterChips({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-        <span className="text-stone-500 text-sm shrink-0 mr-1">Cerveja</span>
         <button
           type="button"
           onClick={() => onHappyHourOnlyChange(!happyHourOnly)}

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { MOCK_VENUES, SAO_PAULO_CENTER, DEFAULT_ZOOM } from "@/data/venues";
+import { MOCK_VENUES, SAO_CARLOS_CENTER, DEFAULT_ZOOM } from "@/data/venues";
 import { fetchVenuesInBounds, createVenue, updateVenuePrices } from "@/lib/api";
 import { expandBounds } from "@/lib/google-places";
 import type { Venue, SortOption, PriceFilter, BeerType } from "@/types";
@@ -31,13 +31,17 @@ const BEER_TYPE_LABELS: Record<BeerType, string> = {
 
 /** Zoom threshold: allow places search when zoom >= this. */
 const PLACES_ZOOM_THRESHOLD = 12;
-/** Minimum ms between two Places API requests. */
-const PLACES_REQUEST_COOLDOWN_MS = 15_000;
-/** Debounce before auto-loading places after user stops panning/zooming. */
-const AUTO_LOAD_DEBOUNCE_MS = 2_000;
+/** Minimum ms between two venue requests (0 = disabled). */
+const PLACES_REQUEST_COOLDOWN_MS = 0;
+/** Debounce before auto-loading venues after user stops panning/zooming. */
+const AUTO_LOAD_DEBOUNCE_MS = 150;
 /** Expand visible bounds by this factor when calling the API (overscanning for smoother pans). */
 const OVERSCAN_FACTOR = 1.25;
+/** Expand bounds slightly for filtering the list so it matches what user sees on screen. */
+const LIST_BOUNDS_OVERSCAN_FACTOR = 1.05;
 const PLACES_CACHE_MAX_ENTRIES = 30;
+const PRECISE_LOCATION_ZOOM = 14;
+const APPROX_LOCATION_ZOOM = 12;
 /** Max external (Google) venues to keep in state; evict oldest by id when exceeded to avoid unbounded growth. */
 const MAX_EXTERNAL_VENUES = 300;
 /** Rounded bbox key for cache (~1.1 km grid) so nearby pans reuse data anywhere in the world. */
@@ -71,8 +75,14 @@ type ViewMode = "map" | "list";
 
 export default function Home() {
   const [venues, setVenues] = useState<Venue[]>(MOCK_VENUES);
-  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(SAO_PAULO_CENTER);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(SAO_CARLOS_CENTER);
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
+  const [mapBounds, setMapBounds] = useState<{
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+  }>(() => boundsFromCenterAndZoom(SAO_CARLOS_CENTER, DEFAULT_ZOOM));
   const [searchMarker, setSearchMarker] = useState<{ lat: number; lng: number } | null>(null);
   const [maxPrice, setMaxPrice] = useState<PriceFilter>(null);
   const [beerType, setBeerType] = useState<BeerType | "">("");
@@ -95,6 +105,7 @@ export default function Home() {
     zoom: number;
   } | null>(null);
   const mapRef = useRef<MapHandle | null>(null);
+  const initialLocationResolvedRef = useRef(false);
 
   const isFromExternal = (v: Venue) => v.fromOsm || v.fromGoogle;
 
@@ -147,15 +158,18 @@ export default function Home() {
       }
 
       const now = Date.now();
-      if (now - lastOverpassRequestTimeRef.current < PLACES_REQUEST_COOLDOWN_MS) {
-        if (isManual) setOsmError("Aguarde uns 15 segundos entre uma busca e outra.");
+      if (
+        PLACES_REQUEST_COOLDOWN_MS > 0 &&
+        now - lastOverpassRequestTimeRef.current < PLACES_REQUEST_COOLDOWN_MS
+      ) {
+        if (isManual) setOsmError("Aguarde um pouco entre as buscas.");
         return;
       }
 
       const requestId = ++osmRequestIdRef.current;
       setOsmLoadState("loading");
       setOsmError(null);
-      lastOverpassRequestTimeRef.current = now;
+      if (PLACES_REQUEST_COOLDOWN_MS > 0) lastOverpassRequestTimeRef.current = now;
 
       const requestBounds = expandBounds(bounds, OVERSCAN_FACTOR);
 
@@ -203,23 +217,37 @@ export default function Home() {
 
   // Sync map view to state when user pans/zooms; clear venues when zoom < threshold; trigger auto-load when zoom >= threshold
   const handleMapBoundsChange = useCallback(
-    (bounds: { south: number; west: number; north: number; east: number }, zoom: number) => {
-      setMapCenter({
-        lat: (bounds.south + bounds.north) / 2,
-        lng: (bounds.west + bounds.east) / 2,
-      });
-      setMapZoom(zoom);
+    (
+      bounds: { south: number; west: number; north: number; east: number },
+      zoom: number,
+      reason: "idle" | "changing"
+    ) => {
+      // Evita feedback/jank: enquanto o usuário arrasta, não sincronizamos center/zoom/state
+      // com props (isso causa loop com `map.panTo`/`map.setZoom` no componente Map).
+      if (reason === "idle") {
+        setMapCenter({
+          lat: (bounds.south + bounds.north) / 2,
+          lng: (bounds.west + bounds.east) / 2,
+        });
+        setMapZoom(zoom);
+        setMapBounds(bounds);
+      }
+
       if (zoom < PLACES_ZOOM_THRESHOLD) {
-        if (autoLoadTimeoutRef.current) {
-          clearTimeout(autoLoadTimeoutRef.current);
-          autoLoadTimeoutRef.current = null;
+        if (reason === "idle") {
+          if (autoLoadTimeoutRef.current) {
+            clearTimeout(autoLoadTimeoutRef.current);
+            autoLoadTimeoutRef.current = null;
+          }
+          lastBoundsForAutoLoadRef.current = null;
+          setVenues((prev) => prev.filter((v) => !isFromExternal(v)));
+          setOsmError(null);
+          setOsmLoadState("idle");
         }
-        lastBoundsForAutoLoadRef.current = null;
-        setVenues((prev) => prev.filter((v) => !isFromExternal(v)));
-        setOsmError(null);
-        setOsmLoadState("idle");
         return;
       }
+
+      // Mesmo durante o movimento, apenas atualizamos o "alvo" do próximo carregamento.
       lastBoundsForAutoLoadRef.current = { bounds, zoom };
       if (autoLoadTimeoutRef.current) clearTimeout(autoLoadTimeoutRef.current);
       autoLoadTimeoutRef.current = setTimeout(() => {
@@ -245,6 +273,23 @@ export default function Home() {
     setSearchMarker({ lat, lng });
   }, []);
 
+  const handleLocateMe = useCallback(() => {
+    if (!("geolocation" in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        setMapCenter({ lat, lng });
+        setMapZoom(PRECISE_LOCATION_ZOOM);
+        setSearchMarker({ lat, lng });
+      },
+      () => {
+        /* denied or error — silent; user can search address */
+      },
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 }
+    );
+  }, []);
+
   // Clear auto-load timeout on unmount
   useEffect(() => {
     return () => {
@@ -255,10 +300,73 @@ export default function Home() {
     };
   }, []);
 
+  // Initial map center: browser geolocation (with prompt) -> IP approximation -> São Carlos fallback.
+  useEffect(() => {
+    if (initialLocationResolvedRef.current) return;
+    initialLocationResolvedRef.current = true;
+    let isCancelled = false;
+
+    const applyLocation = (lat: number, lng: number, zoom: number) => {
+      if (isCancelled) return;
+      setMapCenter({ lat, lng });
+      setMapZoom(zoom);
+      setSearchMarker({ lat, lng });
+    };
+
+    const fallbackToIpLocation = async () => {
+      try {
+        const res = await fetch("https://ipapi.co/json/");
+        if (!res.ok) return;
+        const data = (await res.json()) as { latitude?: number; longitude?: number };
+        if (typeof data.latitude === "number" && typeof data.longitude === "number") {
+          applyLocation(data.latitude, data.longitude, APPROX_LOCATION_ZOOM);
+        }
+      } catch {
+        // Keep São Carlos fallback if IP lookup fails.
+      }
+    };
+
+    if (!("geolocation" in navigator)) {
+      void fallbackToIpLocation();
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        applyLocation(
+          position.coords.latitude,
+          position.coords.longitude,
+          PRECISE_LOCATION_ZOOM
+        );
+      },
+      () => {
+        void fallbackToIpLocation();
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 8000,
+        maximumAge: 300000,
+      }
+    );
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const venuesInBounds = useMemo(() => {
+    const b = expandBounds(mapBounds, LIST_BOUNDS_OVERSCAN_FACTOR);
+    return venues.filter(
+      (v) => v.lat >= b.south && v.lat <= b.north && v.lng >= b.west && v.lng <= b.east
+    );
+  }, [venues, mapBounds]);
+
   const neighborhoods = useMemo(() => {
-    const set = new Set(venues.map((v) => v.neighborhood));
+    const set = new Set(venuesInBounds.map((v) => v.neighborhood));
     return Array.from(set).sort();
-  }, [venues]);
+  }, [venuesInBounds]);
 
   const hasActiveFilters =
     maxPrice != null ||
@@ -267,7 +375,7 @@ export default function Home() {
     sort !== "price_asc";
 
   const filteredAndSortedVenues = useMemo(() => {
-    let list = [...venues];
+    let list = [...venuesInBounds];
 
     if (maxPrice != null) {
       list = list.filter((v) => getMinBeerPrice(v) <= maxPrice);
@@ -292,7 +400,7 @@ export default function Home() {
       list.sort((a, b) => a.name.localeCompare(b.name));
     }
     return list;
-  }, [venues, maxPrice, beerType, neighborhood, happyHourOnly, sort]);
+  }, [venuesInBounds, maxPrice, beerType, neighborhood, happyHourOnly, sort]);
 
   const selectedVenue = useMemo(
     () => (selectedVenueId ? venues.find((v) => v.id === selectedVenueId) ?? null : null),
@@ -447,12 +555,12 @@ export default function Home() {
       <div className="flex-1 flex min-h-0">
         {/* Sidebar: filters + list. No mapa = lista ocupa; no mapa = sidebar ao lado em desktop ou ao abrir Filtros */}
         <aside
-          className={`flex-none flex flex-col bg-stone-950 border-r border-stone-800 transition-all overflow-hidden ${
+          className={`flex flex-col bg-stone-950 border-r border-stone-800 transition-all min-h-0 ${
             viewMode === "list"
-              ? "w-full sm:max-w-[420px]"
+              ? "flex-1 w-full min-h-0 overflow-y-auto overscroll-y-contain sm:flex-none sm:max-w-[420px]"
               : filtersOpen
-                ? "w-full sm:w-96"
-                : "w-0 sm:w-96"
+                ? "flex-none w-full overflow-y-auto overscroll-y-contain sm:w-96"
+                : "flex-none w-0 overflow-hidden sm:w-96 sm:overflow-y-auto sm:overscroll-y-contain sm:min-h-0"
           }`}
         >
           <FilterBar
@@ -475,7 +583,7 @@ export default function Home() {
           />
           <VenueList
             venues={filteredAndSortedVenues}
-            totalVenuesCount={venues.length}
+            totalVenuesCount={venuesInBounds.length}
             selectedVenueId={selectedVenueId}
             onSelectVenue={setSelectedVenueId}
             beerTypeLabels={BEER_TYPE_LABELS}
@@ -490,19 +598,30 @@ export default function Home() {
             viewMode === "list" ? "hidden sm:flex" : ""
           }`}
         >
-          <div className="w-full flex-1 min-h-[240px] rounded-xl overflow-hidden border border-stone-800">
+          <div className="relative w-full flex-1 min-h-[min(52vh,520px)] sm:min-h-[240px] rounded-xl overflow-hidden border border-stone-800 touch-pan-x touch-pan-y">
             {viewMode === "map" ? (
-              <Map
-                ref={mapRef}
-                venues={filteredAndSortedVenues}
-                center={mapCenter}
-                zoom={mapZoom}
-                searchMarker={searchMarker}
-                selectedVenueId={selectedVenueId}
-                onSelectVenue={setSelectedVenueId}
-                getMinPrice={getMinBeerPrice}
-                onBoundsChange={handleMapBoundsChange}
-              />
+              <>
+                <Map
+                  ref={mapRef}
+                  venues={filteredAndSortedVenues}
+                  center={mapCenter}
+                  zoom={mapZoom}
+                  searchMarker={searchMarker}
+                  selectedVenueId={selectedVenueId}
+                  onSelectVenue={setSelectedVenueId}
+                  getMinPrice={getMinBeerPrice}
+                  onBoundsChange={handleMapBoundsChange}
+                />
+                <button
+                  type="button"
+                  onClick={handleLocateMe}
+                  className="absolute left-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-8 z-[1] flex h-11 w-11 items-center justify-center rounded-full border border-stone-600 bg-stone-900/95 text-lg shadow-lg text-stone-100 backdrop-blur hover:bg-stone-800 active:scale-95 transition"
+                  aria-label="Onde estou"
+                  title="Centralizar no meu local (pede permissão de localização)"
+                >
+                  <span aria-hidden>📍</span>
+                </button>
+              </>
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-stone-900 rounded-xl">
                 <span className="text-stone-500 text-sm">

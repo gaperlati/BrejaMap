@@ -68,6 +68,19 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Safety for deploy: block public write operations until Supabase Auth/RLS is in place.
+  // To re-enable writes, set `USER_EDITS_ENABLED=true` in the production environment.
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.USER_EDITS_ENABLED !== "true"
+  ) {
+    return NextResponse.json(
+      { error: "User edits are disabled in production" },
+      { status: 403 }
+    );
+  }
+
   if (!id) {
     return NextResponse.json({ error: "Missing venue id" }, { status: 400 });
   }
@@ -86,12 +99,27 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  const ALLOWED_BEER_TYPES: BeerType[] = ["chope", "long_neck", "lata", "garrafa", "outro"];
+  const maxBeerPrices = 20;
+  const maxHappyHourDetailsLen = 160;
+
   if (body.hasHappyHour !== undefined) {
+    if (typeof body.hasHappyHour !== "boolean") {
+      return NextResponse.json({ error: "Invalid hasHappyHour" }, { status: 400 });
+    }
+    if (body.happyHourDetails != null && typeof body.happyHourDetails !== "string") {
+      return NextResponse.json({ error: "Invalid happyHourDetails" }, { status: 400 });
+    }
+
+    const happyHourDetails = body.happyHourDetails?.trim() ?? "";
     const { error: updateError } = await supabase
       .from("venues")
       .update({
         has_happy_hour: body.hasHappyHour,
-        happy_hour_details: body.happyHourDetails ?? null,
+        happy_hour_details:
+          body.hasHappyHour && happyHourDetails
+            ? happyHourDetails.slice(0, maxHappyHourDetailsLen)
+            : null,
       })
       .eq("id", id);
     if (updateError) {
@@ -100,9 +128,40 @@ export async function PATCH(
   }
 
   if (body.beerPrices && Array.isArray(body.beerPrices) && body.beerPrices.length > 0) {
+    const sanitizedBeerPrices: BeerPrice[] = body.beerPrices
+      .slice(0, maxBeerPrices)
+      .flatMap((p) => {
+        if (!p || typeof p !== "object") return [];
+        const type = p.type as BeerType;
+        if (!ALLOWED_BEER_TYPES.includes(type)) return [];
+        const label = (p.label ?? "").trim();
+        const priceBRL = Number(p.priceBRL);
+        const volumeMl = p.volumeMl == null ? undefined : Number(p.volumeMl);
+
+        if (label.length < 1 || label.length > 60) return [];
+        if (!Number.isFinite(priceBRL) || priceBRL < 0 || priceBRL > 5000) return [];
+        if (volumeMl != null && (!Number.isFinite(volumeMl) || volumeMl < 0 || volumeMl > 5000)) return [];
+
+        return [
+          {
+            type,
+            label,
+            priceBRL,
+            ...(volumeMl != null ? { volumeMl } : {}),
+          } as BeerPrice,
+        ];
+      });
+
+    if (sanitizedBeerPrices.length === 0) {
+      return NextResponse.json(
+        { error: "At least one valid beer price is required" },
+        { status: 400 }
+      );
+    }
+
     await supabase.from("beer_prices").delete().eq("venue_id", id);
 
-    const rows = body.beerPrices.map((p) => ({
+    const rows = sanitizedBeerPrices.map((p) => ({
       venue_id: id,
       type: p.type,
       label: p.label,
