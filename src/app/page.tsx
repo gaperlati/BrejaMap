@@ -519,7 +519,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-dvh min-h-0">
       {/* Header: logo + search (MisterGoodBeer style) */}
       <header className="relative z-[1000] flex-none border-b border-stone-800 bg-stone-900/95 backdrop-blur">
         <div className="px-4 pt-3 pb-2">
@@ -676,7 +676,7 @@ export default function Home() {
 
       {/* Bottom navigation (MisterGoodBeer style) */}
       <nav
-        className="flex-none flex items-center justify-center gap-16 sm:gap-24 border-t border-stone-800 bg-stone-900/95 py-2 safe-area-pb z-[800]"
+        className="flex-none flex items-center justify-center gap-16 sm:gap-24 border-t border-stone-800 bg-stone-900/95 pt-2 safe-area-pb z-[800]"
         aria-label="Navegação principal"
       >
         <span className="flex flex-col items-center gap-0.5 text-amber-500 font-medium text-xs">

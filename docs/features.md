@@ -34,7 +34,9 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - **Buscar bares no clique**: botão **“Buscar bares”** carrega imediatamente a área visível. Se o zoom for **< 12**, mostra “Dê mais zoom no mapa para buscar bares desta área”.
 - **Cache**: até 30 regiões (chave = bounds arredondados); mesma área reutiliza o cache (sem cooldown fixo).
 
-**Arquivos**: `src/components/Map.tsx`, `src/app/page.tsx`.
+- **Barra inferior (Mapa / Adicionar bar)**: `viewportFit: "cover"` no layout para `env(safe-area-inset-bottom)` funcionar no iOS; classe `.safe-area-pb` em `globals.css` com `padding-bottom: max(0.75rem, env(...))`; shell da página usa `h-dvh` em vez de `100vh` para acompanhar a barra dinâmica do Safari.
+
+**Arquivos**: `src/components/Map.tsx`, `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`.
 
 ---
 

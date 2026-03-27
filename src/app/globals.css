@@ -16,6 +16,14 @@ body {
   background: var(--background);
 }
 
+/**
+ * Bottom bar above iOS home indicator + Safari overlay.
+ * Requires `viewportFit: "cover"` (see layout.tsx). Class used by the main nav in page.tsx.
+ */
+.safe-area-pb {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+
 @keyframes slide-up {
   from {
     transform: translateY(100%);
