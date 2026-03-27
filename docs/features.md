@@ -22,6 +22,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - Exibição de um marcador adicional (azul) para o resultado da busca de endereço.
 - **Onde estou**: botão flutuante (📍) no mapa recentraliza com `navigator.geolocation` (zoom 14); em caso de negação/erro não mostra alerta (o usuário pode usar a busca de endereço).
 - Área do mapa com altura mínima maior em telas pequenas (`min(52vh, 520px)`) para gestos de pan mais confortáveis no celular.
+- **Mobile (um dedo no mapa)**: `gestureHandling: "greedy"` no Google Map (evita o modo *cooperative*, que exige dois dedos quando a página é rolável) e o container do mapa usa `touch-none` para o navegador não roubar o pan com `touch-action` de scroll.
 - **Controles nativos:** `disableDefaultUI: true` e reabilitação só do zoom + tela cheia no desktop; **`cameraControl`**, rotação e pan legados ficam desligados (remove a pilha circular de pan/zoom do mapa vetorial que ainda aparecia no mobile).
 - Zoom no canto inferior **direito** só no desktop; em **viewports ≤639px** zoom e tela cheia nativos ficam ocultos (pinça continua no celular).
 - Botão **“Onde estou”** fica no canto **inferior esquerdo**, acima do crédito Google e da área segura, para não conflitar com os controles à direita no desktop.

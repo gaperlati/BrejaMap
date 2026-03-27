@@ -299,6 +299,8 @@ export const Map = forwardRef<MapHandle, MapProps>(function Map(
         cameraControl: false,
         rotateControl: false,
         panControl: false,
+        /** One-finger pan on mobile; default `auto` often picks cooperative (two fingers) when the page scrolls. */
+        gestureHandling: "greedy",
         styles: MAP_BASE_STYLES,
       }}
     >

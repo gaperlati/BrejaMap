@@ -621,7 +621,7 @@ export default function Home() {
             viewMode === "list" ? "hidden sm:flex" : ""
           }`}
         >
-          <div className="relative w-full flex-1 min-h-[min(52vh,520px)] sm:min-h-[240px] rounded-xl overflow-hidden border border-stone-800 touch-pan-x touch-pan-y">
+          <div className="relative w-full flex-1 min-h-[min(52vh,520px)] sm:min-h-[240px] rounded-xl overflow-hidden border border-stone-800 touch-none">
             {viewMode === "map" ? (
               <>
                 <Map
