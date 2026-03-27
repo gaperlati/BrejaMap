@@ -60,6 +60,21 @@ function rowToVenue(row: VenueRow, prices: BeerPriceRow[]): Venue {
   };
 }
 
+function venueDedupKey(venue: Venue): string {
+  const normalizedName = venue.name.trim().toLowerCase();
+  // ~1m precision to collapse duplicated rows for same place
+  const latKey = venue.lat.toFixed(5);
+  const lngKey = venue.lng.toFixed(5);
+  return `${normalizedName}|${latKey}|${lngKey}`;
+}
+
+function pickPreferredVenue(current: Venue, candidate: Venue): Venue {
+  // Prefer user-added rows, then rows with beer prices, then most recent row.
+  const score = (v: Venue): number =>
+    (v.userAdded ? 100 : 0) + (v.beerPrices.length > 0 ? 10 : 0) + Date.parse(v.createdAt);
+  return score(candidate) >= score(current) ? candidate : current;
+}
+
 /**
  * GET /api/venues?bounds=south,west,north,east
  * Returns venues in the given bounding box from our database.
@@ -123,9 +138,16 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const venues: Venue[] = (venueRows ?? []).map((row: VenueRow) =>
+  const mappedVenues: Venue[] = (venueRows ?? []).map((row: VenueRow) =>
     rowToVenue(row, (priceRows ?? []) as BeerPriceRow[])
   );
+  const dedupedByPlace = new Map<string, Venue>();
+  for (const venue of mappedVenues) {
+    const key = venueDedupKey(venue);
+    const current = dedupedByPlace.get(key);
+    dedupedByPlace.set(key, current ? pickPreferredVenue(current, venue) : venue);
+  }
+  const venues = Array.from(dedupedByPlace.values());
 
   return NextResponse.json({ venues });
 }

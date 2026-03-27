@@ -16,11 +16,7 @@ type PriceRow = { type: BeerType; label: string; priceBRL: number };
 
 const initialPriceRow = (): PriceRow => ({ type: "chope", label: "", priceBRL: 0 });
 
-<<<<<<< HEAD
 const SAO_PAULO_CENTER = { lat: -23.5505, lng: -46.6333 };
-=======
-const SAO_CARLOS_CENTER = { lat: -22.0174, lng: -47.8860 };
->>>>>>> 1679269 (checkpoint before checking out cursor/brejamap-roadmap-document-1020)
 
 interface AddVenueModalProps {
   isOpen: boolean;
@@ -35,8 +31,8 @@ export function AddVenueModal({
   isOpen,
   onClose,
   onSubmit,
-  initialLat = SAO_CARLOS_CENTER.lat,
-  initialLng = SAO_CARLOS_CENTER.lng,
+  initialLat = SAO_PAULO_CENTER.lat,
+  initialLng = SAO_PAULO_CENTER.lng,
 }: AddVenueModalProps) {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -139,11 +135,7 @@ export function AddVenueModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const beerPrices = validBeerPrices();
-<<<<<<< HEAD
     if (!name.trim() || beerPrices.length === 0) return;
-=======
-    if (!name.trim() || !locationSelected || !address.trim() || beerPrices.length === 0) return;
->>>>>>> 1679269 (checkpoint before checking out cursor/brejamap-roadmap-document-1020)
     onSubmit({
       name: name.trim(),
       address: address.trim(),
@@ -398,11 +390,7 @@ export function AddVenueModal({
             </button>
             <button
               type="submit"
-<<<<<<< HEAD
               disabled={!name.trim() || validBeerPrices().length === 0}
-=======
-              disabled={!name.trim() || !locationSelected || validBeerPrices().length === 0}
->>>>>>> 1679269 (checkpoint before checking out cursor/brejamap-roadmap-document-1020)
               className="px-4 py-2 rounded-lg bg-amber-500 text-stone-950 font-medium hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Salvar bar

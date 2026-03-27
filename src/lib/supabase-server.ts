@@ -5,8 +5,8 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const url = process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const url = process.env.SUPABASE_URL?.trim();
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
 if (!url || !serviceRoleKey) {
   console.warn(

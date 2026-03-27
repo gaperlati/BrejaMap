@@ -29,6 +29,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - **Carregamento automático ao pan/zoom**: durante o movimento a app atualiza apenas o “alvo” do carregamento (sem sincronizar center/zoom/re-render pesado); no evento `idle` ela faz um relatório final e o zoom **≥ 12** dispara a busca ao **nosso backend** (GET /api/venues?bounds=...) após **~150 ms** de debounce (sem cooldown fixo). Não há chamadas ao Google Places no cliente.
 - **Overscanning**: os bounds visíveis são expandidos em **25%** antes de enviar ao backend; a resposta traz bares um pouco fora da tela para micro-pans sem nova requisição.
 - **Merge por ID**: resultados novos são **mesclados** aos já carregados (por ID). Até 300 venues em memória (evição ao ultrapassar).
+- **Deduplicação no estado do cliente**: após cada merge de resultados, o frontend também elimina duplicatas por nome+coordenada (com priorização de user-added, com preços e mais recente) para evitar itens repetidos na lista quando múltiplas buscas da mesma área retornam venues equivalentes.
 - **Buscar bares no clique**: botão **“Buscar bares”** carrega imediatamente a área visível. Se o zoom for **< 12**, mostra “Dê mais zoom no mapa para buscar bares desta área”.
 - **Cache**: até 30 regiões (chave = bounds arredondados); mesma área reutiliza o cache (sem cooldown fixo).
 
@@ -63,6 +64,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 ## 3.1. Backend (Supabase) e fontes de dados
 
 - **Fonte de pins no mapa**: o cliente **não** chama mais o Google Places. Ao pan/zoom (idle, zoom ≥ 12) ou ao clicar em “Buscar bares”, o frontend chama **GET /api/venues?bounds=south,west,north,east**. O Next.js consulta o Supabase (tabelas `venues` e `beer_prices`) e devolve um JSON enxuto com os venues na bounding box. Isso elimina a latência e o payload pesado do Places no cliente.
+- **Deduplicação de venues no GET**: quando existem linhas repetidas no banco para o mesmo local (mesmo nome + coordenadas muito próximas), a API responde apenas uma entrada para evitar cards/pins duplicados. A priorização mantém, nessa ordem, venues adicionados por usuário, depois venues com preços e por fim o registro mais recente.
 - **Persistência**: **POST /api/venues** (adicionar bar) e **PATCH /api/venues/[id]** (adicionar/editar preços e happy hour) gravam no Supabase. Se o backend não estiver configurado (503), o app usa apenas estado local (mock + edições em memória).
 - **Writes (produção)**: por segurança, operações de escrita podem ficar **bloqueadas em produção** até que Auth/RLS do Supabase esteja implementado. Para reabilitar, configure `USER_EDITS_ENABLED=true` no ambiente.
 - **Schema**: `venues` (id, name, address, neighborhood, city, state, lat, lng, has_happy_hour, happy_hour_details, photo_url, created_at, user_added, source); `beer_prices` (id, venue_id, type, label, price_brl, volume_ml, created_at). Migração em `supabase/migrations/001_venues_and_beer_prices.sql`.
@@ -141,8 +143,8 @@ Ao selecionar um bar no mapa ou na lista:
 
 ## 8. Navegação inferior
 
-- Barra fixa no rodapé com três itens: **Mapa**, **Adicionar bar**, **Minha conta**.
-- “Mapa” e “Minha conta” são apenas indicadores visuais (sem ação ainda).
+- Barra fixa no rodapé com dois itens: **Mapa** e **Adicionar bar**.
+- “Mapa” é apenas indicador visual (sem ação além do contexto atual da tela).
 - “Adicionar bar” abre o modal de novo bar.
 
 **Arquivos**: `src/app/page.tsx`.

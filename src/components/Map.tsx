@@ -5,7 +5,6 @@ import {
   useJsApiLoader,
   GoogleMap,
   Marker,
-  InfoWindow,
 } from "@react-google-maps/api";
 import type { Venue } from "@/types";
 
@@ -319,32 +318,7 @@ export const Map = forwardRef<MapHandle, MapProps>(function Map(
               anchor: new google.maps.Point(8, 26),
             }}
             onClick={() => onSelectVenue(venue.id)}
-          >
-            {selectedVenueId === venue.id && (
-              <InfoWindow
-                position={{ lat: venue.lat, lng: venue.lng }}
-                onCloseClick={() => onSelectVenue(null)}
-              >
-                <div className="min-w-[200px] p-1 text-stone-800">
-                  <p className="font-semibold text-amber-700">{venue.name}</p>
-                  <p className="text-stone-600 text-sm mt-0.5">{venue.neighborhood}</p>
-                  <p className="text-stone-700 text-sm mt-2">
-                    {venue.beerPrices.length === 0
-                      ? "Preços não informados"
-                      : venue.beerPrices
-                          .map((p) => `${p.label}: R$ ${p.priceBRL.toFixed(2)}`)
-                          .join(" · ")}
-                  </p>
-                  <p className="text-amber-600 font-medium mt-1">
-                    {Number.isFinite(minPrice) ? `A partir de R$ ${minPrice.toFixed(2)}` : "—"}
-                  </p>
-                  {venue.hasHappyHour && (
-                    <p className="text-amber-700 text-xs mt-1">Happy hour</p>
-                  )}
-                </div>
-              </InfoWindow>
-            )}
-          </Marker>
+          />
         );
       })}
 

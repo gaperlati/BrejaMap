@@ -71,6 +71,10 @@ function getMinBeerPrice(venue: Venue): number {
   return Math.min(...venue.beerPrices.map((p) => p.priceBRL));
 }
 
+function venueKeyByPlace(venue: Venue): string {
+  return `${venue.name.trim().toLowerCase()}|${venue.lat.toFixed(5)}|${venue.lng.toFixed(5)}`;
+}
+
 type ViewMode = "map" | "list";
 
 export default function Home() {
@@ -145,7 +149,29 @@ export default function Home() {
           if (merged.length > MAX_EXTERNAL_VENUES) {
             merged = merged.slice(-MAX_EXTERNAL_VENUES);
           }
-          return [...rest, ...merged];
+          // Defensive dedupe: avoid repeated cards when the same venue is merged many times
+          // (e.g. repeated API responses during pan/zoom or local fallback entries).
+          const byPlace = new globalThis.Map<string, Venue>();
+          for (const venue of [...rest, ...merged]) {
+            const key = venueKeyByPlace(venue);
+            const current = byPlace.get(key);
+            if (!current) {
+              byPlace.set(key, venue);
+              continue;
+            }
+            const currentScore =
+              (current.userAdded ? 100 : 0) +
+              (current.beerPrices.length > 0 ? 10 : 0) +
+              Date.parse(current.createdAt);
+            const candidateScore =
+              (venue.userAdded ? 100 : 0) +
+              (venue.beerPrices.length > 0 ? 10 : 0) +
+              Date.parse(venue.createdAt);
+            if (candidateScore >= currentScore) {
+              byPlace.set(key, venue);
+            }
+          }
+          return Array.from(byPlace.values());
         });
       };
 
@@ -497,13 +523,10 @@ export default function Home() {
       {/* Header: logo + search (MisterGoodBeer style) */}
       <header className="relative z-[1000] flex-none border-b border-stone-800 bg-stone-900/95 backdrop-blur">
         <div className="px-4 pt-3 pb-2">
-          <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3">
             <h1 className="text-lg font-bold text-amber-400 tracking-tight">
               BrejaMap
             </h1>
-            <p className="text-stone-500 text-xs hidden sm:block">
-              Estado de São Paulo
-            </p>
           </div>
           <div className="w-full">
             <AddressSearch
@@ -653,7 +676,7 @@ export default function Home() {
 
       {/* Bottom navigation (MisterGoodBeer style) */}
       <nav
-        className="flex-none flex items-center justify-around border-t border-stone-800 bg-stone-900/95 py-2 safe-area-pb z-[800]"
+        className="flex-none flex items-center justify-center gap-16 sm:gap-24 border-t border-stone-800 bg-stone-900/95 py-2 safe-area-pb z-[800]"
         aria-label="Navegação principal"
       >
         <span className="flex flex-col items-center gap-0.5 text-amber-500 font-medium text-xs">
@@ -668,10 +691,6 @@ export default function Home() {
           <span aria-hidden>➕</span>
           Adicionar bar
         </button>
-        <span className="flex flex-col items-center gap-0.5 text-stone-500 text-xs">
-          <span aria-hidden>👤</span>
-          Minha conta
-        </span>
       </nav>
 
       <AddVenueModal
