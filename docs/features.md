@@ -77,8 +77,8 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 Ao publicar o app, o Supabase começa vazio. Opções para o usuário não ficar frustrado:
 
-1. **Manter mock em produção** (comportamento atual): o app inicia com 6 bares em memória (`MOCK_VENUES`). Ao clicar em "Buscar bares", a API devolve vazia e esses bares continuam visíveis. Funciona, mas os dados são placeholder.
-2. **Rodar o seed no deploy**: após criar o projeto no Supabase e rodar a migração, executar `supabase/seed.sql` no SQL Editor. Os mesmos 6 bares passam a existir no banco; "Buscar bares" em São Paulo/Campinas já retorna dados reais.
+1. **Manter mock em produção** (comportamento atual): o app inicia com bares de exemplo em memória (`MOCK_VENUES`). Ao clicar em "Buscar bares", a API devolve vazia e esses bares continuam visíveis. Funciona, mas os dados são placeholder.
+2. **Rodar o seed no deploy**: após criar o projeto no Supabase e rodar a migração, executar `supabase/seed.sql` no SQL Editor. Os mesmos bares de exemplo passam a existir no banco; "Buscar bares" em São Paulo/Campinas já retorna dados reais.
 3. **Empty state amigável**: quando não há nenhum bar na região (lista vazia sem filtros), a lista exibe "Nenhum bar nesta região ainda. Seja o primeiro a adicionar!" e botão **Adicionar bar**, convidando o usuário a contribuir.
 4. **Fallback Overpass (futuro)**: o backend pode, quando o Supabase retornar 0 venues para um bounds, chamar a API Overpass (OpenStreetMap) e devolver bares da região sem preços — o mapa sempre mostra algo.
 5. **Google Places como fallback**: mesma ideia do Overpass, com custo de API e necessidade de ativar Places API no Google Cloud.

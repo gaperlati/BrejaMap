@@ -1,4 +1,4 @@
--- Seed: insert the 6 mock bars so "Buscar bares" and pan/zoom return data.
+-- Seed: insert the mock bars so "Buscar bares" and pan/zoom return data.
 -- Run this once in Supabase SQL Editor after 001_venues_and_beer_prices.sql.
 -- (If you run it again you'll get duplicate key errors; truncate venues first if you need to re-seed.)
 
@@ -127,3 +127,25 @@ INSERT INTO public.beer_prices (venue_id, type, label, price_brl, volume_ml)
 VALUES
   ('a0000001-0001-4000-8000-000000000006', 'chope', 'Chope', 7.5, 300),
   ('a0000001-0001-4000-8000-000000000006', 'lata', 'Lata', 6, 350);
+
+-- 7. Bar Faria Lima (template) — Av. Brigadeiro Faria Lima, 949
+INSERT INTO public.venues (id, name, address, neighborhood, city, state, lat, lng, has_happy_hour, happy_hour_details, user_added, source)
+VALUES (
+  'a0000001-0001-4000-8000-000000000007',
+  'Bar Faria Lima (template)',
+  'Av. Brigadeiro Faria Lima, 949',
+  'Itaim Bibi',
+  'São Paulo',
+  'SP',
+  -23.5689,
+  -46.6895,
+  true,
+  'Seg–Sex 18h–20h: chope R$ 9',
+  false,
+  'user'
+);
+INSERT INTO public.beer_prices (venue_id, type, label, price_brl, volume_ml)
+VALUES
+  ('a0000001-0001-4000-8000-000000000007', 'chope', 'Chope Heineken', 11.5, 300),
+  ('a0000001-0001-4000-8000-000000000007', 'long_neck', 'Long neck Stella', 13, 355),
+  ('a0000001-0001-4000-8000-000000000007', 'lata', 'Brahma lata', 8.5, 350);

@@ -104,6 +104,24 @@ export const MOCK_VENUES: Venue[] = [
     happyHourDetails: "Seg–Sex 18h–20h: chope R$ 5",
     createdAt: "2024-02-20T10:00:00Z",
   },
+  {
+    id: "sp-faria-949",
+    name: "Bar Faria Lima (template)",
+    address: "Av. Brigadeiro Faria Lima, 949",
+    neighborhood: "Itaim Bibi",
+    city: "São Paulo",
+    state: "SP",
+    lat: -23.5689,
+    lng: -46.6895,
+    beerPrices: [
+      { type: "chope", label: "Chope Heineken", priceBRL: 11.5, volumeMl: 300 },
+      { type: "long_neck", label: "Long neck Stella", priceBRL: 13.0, volumeMl: 355 },
+      { type: "lata", label: "Brahma lata", priceBRL: 8.5, volumeMl: 350 },
+    ],
+    hasHappyHour: true,
+    happyHourDetails: "Seg–Sex 18h–20h: chope R$ 9",
+    createdAt: "2024-03-25T10:00:00Z",
+  },
   // São Carlos (SP) - amostras para preencher o mapa inicial
   {
     id: "sc-1",

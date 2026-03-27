@@ -9,8 +9,8 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "BrejaMap | Mapa de preços de cerveja - São Paulo",
-  description: "Encontre bares e cervejas com os melhores preços no estado de São Paulo.",
+  title: "BrejaMap | Mapa de preços de cerveja",
+  description: "Encontre bares e cervejas com os melhores preços.",
 };
 
 export default function RootLayout({

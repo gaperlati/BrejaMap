@@ -9,7 +9,7 @@ Mapa de preços de cerveja para o estado de São Paulo. Encontre bares com os me
    - **Mapa**: em [Google Cloud Console](https://console.cloud.google.com/apis/credentials), crie uma chave e ative **Maps JavaScript API**. Defina `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
    - **Backend (bares no mapa)**: crie um projeto em [Supabase](https://supabase.com), em Settings → API copie URL e **service_role** key. Defina `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`. Rode o SQL em `supabase/migrations/001_venues_and_beer_prices.sql` no SQL Editor do Supabase.
 
-**Para publicar com dados iniciais**: depois da migração, rode também `supabase/seed.sql` no SQL Editor. Isso insere 6 bares de exemplo (São Paulo e Campinas). Sem o seed, o mapa começa com os bares mock em memória até a primeira busca; com o seed, "Buscar bares" já devolve dados reais do banco.
+**Para publicar com dados iniciais**: depois da migração, rode também `supabase/seed.sql` no SQL Editor. Isso insere os bares de exemplo (São Paulo, Campinas e um template em Av. Faria Lima, 949). Sem o seed, o mapa começa com os bares mock em memória até a primeira busca; com o seed, "Buscar bares" já devolve dados reais do banco.
 
 2. Instale e rode:
 
