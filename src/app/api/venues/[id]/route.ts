@@ -139,7 +139,7 @@ export async function PATCH(
         const volumeMl = p.volumeMl == null ? undefined : Number(p.volumeMl);
 
         if (label.length < 1 || label.length > 60) return [];
-        if (!Number.isFinite(priceBRL) || priceBRL < 0 || priceBRL > 5000) return [];
+        if (!Number.isFinite(priceBRL) || priceBRL <= 0 || priceBRL > 5000) return [];
         if (volumeMl != null && (!Number.isFinite(volumeMl) || volumeMl < 0 || volumeMl > 5000)) return [];
 
         return [

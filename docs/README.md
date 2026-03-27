@@ -17,6 +17,7 @@ Se você ainda usa Node 12, instale Node 20 (por exemplo via [nodejs.org](https:
 |-----------|-----------|
 | [features.md](./features.md) | Funcionalidades atuais do app (mapa, busca, filtros, lista, detalhe do bar, adicionar bar, etc.) |
 | [ROADMAP.md](./ROADMAP.md) | Roadmap e próximas features (pre-release, release, pós-release) |
+| [beer-prices-options.md](./beer-prices-options.md) | Decisão de modelagem/UI para suportar múltiplas marcas de cerveja por bar (opções, recomendação e status). |
 
 ## Manutenção
 
