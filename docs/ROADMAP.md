@@ -34,6 +34,7 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 
 ### Polimento e robustez
 
+- [x] Corrigir “Buscar bares” para consultar bounds/zoom do mapa ao vivo por callback, com limpeza do handle ao desmontar e reinicialização dos relatórios ao remontar.
 - [x] Meta tags e Open Graph: título, descrição, imagem para compartilhamento em redes sociais (atualizar `src/app/layout.tsx`)
 - [x] Error boundaries ou tratamento gracioso: map/API failures devem mostrar mensagem clara ao usuário, não tela em branco
 - [x] "Minha conta" na navegação: oculto até pós-release (a barra inferior só tem Mapa e Adicionar bar)

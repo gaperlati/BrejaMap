@@ -1,12 +1,15 @@
 "use client";
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useJsApiLoader,
   GoogleMap,
   Marker,
 } from "@react-google-maps/api";
 import type { Venue } from "@/types";
+import { createMapHandle, type MapBounds, type MapHandle } from "@/lib/mapHandle";
+
+export type { MapBounds, MapHandle };
 
 const MAP_CONTAINER_STYLE = { width: "100%", height: "100%" };
 
@@ -31,17 +34,6 @@ const MAP_BASE_STYLES: google.maps.MapTypeStyle[] = [
   },
 ];
 
-export interface MapBounds {
-  south: number;
-  west: number;
-  north: number;
-  east: number;
-}
-
-export interface MapHandle {
-  getCurrentBounds(): { bounds: MapBounds; zoom: number } | null;
-}
-
 const BOUNDS_DEBOUNCE_MS = 250;
 // Throttle for reporting bounds during movement so venues can load more continuously.
 const BOUNDS_CHANGED_THROTTLE_MS = 400;
@@ -60,6 +52,12 @@ interface MapProps {
     zoom: number,
     reason: "idle" | "changing"
   ) => void;
+  /**
+   * Called with a handle to the live map once it is created. The returned
+   * function (if any) runs when that map goes away (unmount, `onUnmount`,
+   * StrictMode re-run), so the parent can drop the stale handle.
+   */
+  onReady?: (handle: MapHandle) => (() => void) | void;
 }
 
 function makePriceBubbleIconUrl(priceLabel: string, isSelected: boolean): string {
@@ -80,19 +78,17 @@ function makePriceBubbleIconUrl(priceLabel: string, isSelected: boolean): string
   return "data:image/svg+xml," + encodeURIComponent(svg);
 }
 
-export const Map = forwardRef<MapHandle, MapProps>(function Map(
-  {
-    venues,
-    center,
-    zoom,
-    searchMarker = null,
-    selectedVenueId,
-    onSelectVenue,
-    getMinPrice,
-    onBoundsChange,
-  },
-  ref
-) {
+export function Map({
+  venues,
+  center,
+  zoom,
+  searchMarker = null,
+  selectedVenueId,
+  onSelectVenue,
+  getMinPrice,
+  onBoundsChange,
+  onReady,
+}: MapProps) {
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const initialCenterSet = useRef(false);
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -113,29 +109,20 @@ export const Map = forwardRef<MapHandle, MapProps>(function Map(
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      getCurrentBounds(): { bounds: MapBounds; zoom: number } | null {
-        if (!map) return null;
-        const bounds = map.getBounds();
-        const zoomLevel = map.getZoom();
-        if (!bounds || zoomLevel == null) return null;
-        const ne = bounds.getNorthEast();
-        const sw = bounds.getSouthWest();
-        return {
-          bounds: {
-            south: sw.lat(),
-            west: sw.lng(),
-            north: ne.lat(),
-            east: ne.lng(),
-          },
-          zoom: zoomLevel,
-        };
-      },
-    }),
-    [map]
-  );
+  // Latest callback in a ref so a new `onReady` identity doesn't re-announce the map.
+  const onReadyRef = useRef(onReady);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
+
+  // Hand the live map to the parent; release it when this map instance goes away.
+  useEffect(() => {
+    if (!map) return;
+    const release = onReadyRef.current?.(createMapHandle(map));
+    return () => {
+      if (typeof release === "function") release();
+    };
+  }, [map]);
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey || "",
@@ -151,6 +138,7 @@ export const Map = forwardRef<MapHandle, MapProps>(function Map(
   }, [isLoaded, loadError, apiKey]);
 
   const onLoad = useCallback((mapInstance: google.maps.Map) => {
+    lastReportedRef.current = "";
     setMap(mapInstance);
   }, []);
 
@@ -339,4 +327,4 @@ export const Map = forwardRef<MapHandle, MapProps>(function Map(
       )}
     </GoogleMap>
   );
-});
+}
