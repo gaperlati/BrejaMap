@@ -32,11 +32,12 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - **Merge por ID**: resultados novos são **mesclados** aos já carregados (por ID). Até 300 venues em memória (evição ao ultrapassar).
 - **Deduplicação no estado do cliente**: após cada merge de resultados, o frontend também elimina duplicatas por nome+coordenada (com priorização de user-added, com preços e mais recente) para evitar itens repetidos na lista quando múltiplas buscas da mesma área retornam venues equivalentes.
 - **Buscar bares no clique**: botão **“Buscar bares”** carrega imediatamente a área visível. Se o zoom for **< 12**, mostra “Dê mais zoom no mapa para buscar bares desta área”.
+  - A área visível vem do **mapa ao vivo**: `Map` entrega um handle pelo callback `onReady` (em vez de `ref`, que não é repassado de forma confiável pelo `next/dynamic`) e `page.tsx` guarda em `mapHandleRef`; `getCurrentBounds()` lê bounds/zoom do Google Maps no momento do clique. Quando o mapa desmonta (vista Lista, `onUnmount`, StrictMode), a função de limpeza devolvida limpa o handle — só se ainda for o mesmo, para não apagar o de um mapa remontado. Sem handle (mapa ainda carregando), usa o centro/zoom do estado como fallback. Teste: `node --test src/lib/mapHandle.test.mjs`.
 - **Cache**: até 30 regiões (chave = bounds arredondados); mesma área reutiliza o cache (sem cooldown fixo).
 
 - **Barra inferior (Mapa / Adicionar bar)**: `viewportFit: "cover"` no layout para `env(safe-area-inset-bottom)` funcionar no iOS; classe `.safe-area-pb` em `globals.css` com `padding-bottom: max(0.75rem, env(...))`; shell da página usa `h-dvh` em vez de `100vh` para acompanhar a barra dinâmica do Safari.
 
-**Arquivos**: `src/components/Map.tsx`, `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`, `src/lib/geo.ts` (overscan de bounds).
+**Arquivos**: `src/components/Map.tsx`, `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`, `src/lib/geo.ts` (overscan de bounds), `src/lib/mapHandle.ts` (handle do mapa para “Buscar bares”).
 
 ---
 

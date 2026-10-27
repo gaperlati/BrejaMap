@@ -20,7 +20,7 @@ import { AddPricesModal } from "@/components/AddPricesModal";
 import { AddressSearch } from "@/components/AddressSearch";
 import { FilterChips } from "@/components/FilterChips";
 import { VenueSheet } from "@/components/VenueSheet";
-import type { MapHandle } from "@/components/Map";
+import { attachMapHandle, type MapHandle } from "@/lib/mapHandle";
 import { MapLoadingPlaceholder } from "@/components/MapLoadingPlaceholder";
 
 const Map = dynamic(() => import("@/components/Map").then((m) => m.Map), {
@@ -130,7 +130,8 @@ export default function Home() {
     bounds: { south: number; west: number; north: number; east: number };
     zoom: number;
   } | null>(null);
-  const mapRef = useRef<MapHandle | null>(null);
+  /** Live map handle from `Map`'s `onReady` (null while the map isn't mounted). */
+  const mapHandleRef = useRef<MapHandle | null>(null);
   const initialLocationResolvedRef = useRef(false);
 
   const isFromExternal = (v: Venue) => v.fromOsm || v.fromGoogle;
@@ -293,8 +294,13 @@ export default function Home() {
     [tryLoadPlacesForBounds]
   );
 
+  const handleMapReady = useCallback(
+    (handle: MapHandle) => attachMapHandle(mapHandleRef, handle),
+    []
+  );
+
   const handleLoadPlacesBars = useCallback(() => {
-    const current = mapRef.current?.getCurrentBounds();
+    const current = mapHandleRef.current?.getCurrentBounds();
     const zoom = current?.zoom ?? mapZoom;
     const bounds =
       current?.bounds ?? boundsFromCenterAndZoom(mapCenter, mapZoom);
@@ -609,7 +615,6 @@ export default function Home() {
             {viewMode === "map" ? (
               <>
                 <Map
-                  ref={mapRef}
                   venues={filteredAndSortedVenues}
                   center={mapCenter}
                   zoom={mapZoom}
@@ -618,6 +623,7 @@ export default function Home() {
                   onSelectVenue={setSelectedVenueId}
                   getMinPrice={getMinBeerPrice}
                   onBoundsChange={handleMapBoundsChange}
+                  onReady={handleMapReady}
                 />
                 <button
                   type="button"
