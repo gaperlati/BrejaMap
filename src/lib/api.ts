@@ -22,6 +22,18 @@ export function saveErrorMessage(e: unknown): string {
   return "Erro ao salvar. Verifique sua conexão e tente novamente.";
 }
 
+/** User-facing (pt-BR) message for a failed GET /api/venues (map loading). */
+export function loadVenuesErrorMessage(e: unknown): string {
+  const err = e as ApiError;
+  if (err?.status === 503) {
+    return "Backend não configurado. Configure Supabase para carregar bares do mapa.";
+  }
+  if (err?.status === 400 && err.message?.includes("too large")) {
+    return "Área muito grande: aproxime o mapa para buscar bares.";
+  }
+  return "Não foi possível carregar os bares. Verifique sua conexão e tente novamente.";
+}
+
 export interface VenueFromAPI {
   id: string;
   name: string;

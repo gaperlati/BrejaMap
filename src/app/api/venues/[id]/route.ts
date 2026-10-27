@@ -2,15 +2,13 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase-server";
 import {
-  type VenueRow,
-  type BeerPriceRow,
-  rowToVenue,
   sanitizeBeerPrices,
   cleanString,
   isUuid,
   writesBlockedResponse,
   MAX_HAPPY_HOUR_DETAILS_LEN,
 } from "@/lib/venue-server";
+import { buildUpdateVenueArgs, runVenueWrite } from "@/lib/venue-writes";
 
 /**
  * PATCH /api/venues/[id] - Update venue (e.g. add/edit beer prices, happy hour).
@@ -60,76 +58,27 @@ export async function PATCH(
     );
   }
 
-  // Validate everything before touching the database, and 404 on unknown ids.
-  const { data: existing, error: existsError } = await supabase
-    .from("venues")
-    .select("id")
-    .eq("id", id)
-    .maybeSingle();
-  if (existsError) {
-    console.error("Supabase venue lookup error:", existsError);
-    return NextResponse.json({ error: "Failed to load venue" }, { status: 500 });
-  }
-  if (!existing) {
-    return NextResponse.json({ error: "Venue not found" }, { status: 404 });
-  }
+  // Everything is validated above; one atomic call updates happy hour and replaces prices,
+  // and changes nothing (404) when the venue does not exist.
+  const result = await runVenueWrite(
+    supabase,
+    "update_venue_and_prices",
+    buildUpdateVenueArgs(id, {
+      hasHappyHour: typeof body.hasHappyHour === "boolean" ? body.hasHappyHour : undefined,
+      happyHourDetails: cleanString(body.happyHourDetails, MAX_HAPPY_HOUR_DETAILS_LEN),
+      beerPrices,
+    })
+  );
 
-  if (typeof body.hasHappyHour === "boolean") {
-    const happyHourDetails = cleanString(body.happyHourDetails, MAX_HAPPY_HOUR_DETAILS_LEN);
-    const { error: updateError } = await supabase
-      .from("venues")
-      .update({
-        has_happy_hour: body.hasHappyHour,
-        happy_hour_details: body.hasHappyHour && happyHourDetails ? happyHourDetails : null,
-      })
-      .eq("id", id);
-    if (updateError) {
-      console.error("Supabase update venue error:", updateError);
-      return NextResponse.json({ error: "Failed to update venue" }, { status: 500 });
+  if (!result.ok) {
+    if (result.reason === "not_found") {
+      return NextResponse.json({ error: "Venue not found" }, { status: 404 });
     }
-  }
-
-  if (wantsPriceUpdate) {
-    const { error: deleteError } = await supabase
-      .from("beer_prices")
-      .delete()
-      .eq("venue_id", id);
-    if (deleteError) {
-      console.error("Supabase delete beer_prices error:", deleteError);
-      return NextResponse.json({ error: "Failed to update beer prices" }, { status: 500 });
-    }
-
-    const { error: insertError } = await supabase.from("beer_prices").insert(
-      beerPrices.map((p) => ({
-        venue_id: id,
-        type: p.type,
-        label: p.label,
-        price_brl: p.priceBRL,
-        volume_ml: p.volumeMl ?? null,
-      }))
+    return NextResponse.json(
+      { error: wantsPriceUpdate ? "Failed to update beer prices" : "Failed to update venue" },
+      { status: 500 }
     );
-    if (insertError) {
-      console.error("Supabase insert beer_prices error:", insertError);
-      return NextResponse.json({ error: "Failed to update beer prices" }, { status: 500 });
-    }
   }
 
-  const { data: venueRow, error: fetchError } = await supabase
-    .from("venues")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (fetchError || !venueRow) {
-    console.error("Supabase fetch venue error:", fetchError);
-    return NextResponse.json({ error: "Failed to load venue" }, { status: 500 });
-  }
-
-  const { data: priceRows } = await supabase
-    .from("beer_prices")
-    .select("*")
-    .eq("venue_id", id);
-
-  const venue = rowToVenue(venueRow as VenueRow, (priceRows ?? []) as BeerPriceRow[]);
-  return NextResponse.json({ venue });
+  return NextResponse.json({ venue: result.venue });
 }

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { MOCK_VENUES, SAO_CARLOS_CENTER, DEFAULT_ZOOM } from "@/data/venues";
 import {
   fetchVenuesInBounds,
+  loadVenuesErrorMessage,
   createVenue,
   updateVenuePrices,
   saveErrorMessage,
@@ -238,13 +239,7 @@ export default function Home() {
         .catch((e) => {
           if (requestId !== osmRequestIdRef.current) return;
           setOsmLoadState("error");
-          const err = e as Error & { status?: number };
-          const msg = err instanceof Error ? err.message : "Erro ao buscar bares";
-          setOsmError(
-            err.status === 503 || msg.includes("Database not configured")
-              ? "Backend não configurado. Configure Supabase para carregar bares do mapa."
-              : msg
-          );
+          setOsmError(loadVenuesErrorMessage(e));
         });
     },
     []
