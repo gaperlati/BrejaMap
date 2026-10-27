@@ -36,14 +36,14 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 - **Barra inferior (Mapa / Adicionar bar)**: `viewportFit: "cover"` no layout para `env(safe-area-inset-bottom)` funcionar no iOS; classe `.safe-area-pb` em `globals.css` com `padding-bottom: max(0.75rem, env(...))`; shell da página usa `h-dvh` em vez de `100vh` para acompanhar a barra dinâmica do Safari.
 
-**Arquivos**: `src/components/Map.tsx`, `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`.
+**Arquivos**: `src/components/Map.tsx`, `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`, `src/lib/geo.ts` (overscan de bounds).
 
 ---
 
 ## 2. Pesquisar endereço
 
 - Campo de busca no header: “Pesquisar endereço”.
-- Busca com **Nominatim (OpenStreetMap)**; resultados em dropdown (debounce 400 ms).
+- Busca com **Nominatim (OpenStreetMap)**, restrita ao Brasil (`countrycodes=br`, resultados em pt-BR); resultados em dropdown (debounce 400 ms).
 - Ao selecionar um resultado: mapa centraliza no local e aplica zoom 15; marcador de busca é exibido.
 - Placeholder configurável.
 
@@ -58,9 +58,11 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - **Chip “Buscar bares”**: carrega bares da **nossa API** (backend Supabase) na área visível (zoom ≥ 12). Carregamento automático ao pan/zoom (debounce ~150 ms). Se o backend não estiver configurado, mostra mensagem e permanecem só os bares mock.
 - **Preço máximo (R$)**: filtra bares cujo menor preço seja ≤ valor (bares sem preços ficam de fora).
 - **Tipo de cerveja**: filtra bares que tenham ao menos um preço daquele tipo (bares sem preços ficam de fora).
-- **Bairro**, **Apenas happy hour**, **Ordenar**: como antes.
+- **Bairro**: lista os bairros dos bares visíveis (ignora vazios, ordem pt-BR).
+- **Apenas happy hour**.
+- **Ordenar**: Menor preço, Maior preço, **Mais perto** e Nome. "Mais perto" usa a última localização conhecida do usuário (navegador ou IP); sem ela, a distância é medida a partir do centro do mapa (`distanceKm` em `src/lib/geo.ts`).
 
-**Arquivos**: `src/components/FilterBar.tsx`, `src/components/FilterChips.tsx`, `src/app/page.tsx`, `src/lib/api.ts`.
+**Arquivos**: `src/components/FilterBar.tsx`, `src/components/FilterChips.tsx`, `src/app/page.tsx`, `src/lib/api.ts`, `src/lib/geo.ts`.
 
 ---
 
@@ -68,7 +70,14 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 - **Fonte de pins no mapa**: o cliente **não** chama mais o Google Places. Ao pan/zoom (idle, zoom ≥ 12) ou ao clicar em “Buscar bares”, o frontend chama **GET /api/venues?bounds=south,west,north,east**. O Next.js consulta o Supabase (tabelas `venues` e `beer_prices`) e devolve um JSON enxuto com os venues na bounding box. Isso elimina a latência e o payload pesado do Places no cliente.
 - **Deduplicação de venues no GET**: quando existem linhas repetidas no banco para o mesmo local (mesmo nome + coordenadas muito próximas), a API responde apenas uma entrada para evitar cards/pins duplicados. A priorização mantém, nessa ordem, venues adicionados por usuário, depois venues com preços e por fim o registro mais recente.
-- **Persistência**: **POST /api/venues** (adicionar bar) e **PATCH /api/venues/[id]** (adicionar/editar preços e happy hour) gravam no Supabase. Se o backend não estiver configurado (503), o app usa apenas estado local (mock + edições em memória).
+- **Persistência**: **POST /api/venues** (adicionar bar) e **PATCH /api/venues/[id]** (adicionar/editar preços e happy hour) gravam no Supabase. Se o backend não estiver configurado (503), o app usa apenas estado local (mock + edições em memória). Qualquer **outra falha** (403 com escrita desativada, 400, 500, rede) é mostrada no próprio modal e o modal continua aberto; o app não finge mais que salvou.
+- **Validação no servidor** (`src/lib/venue-server.ts`, compartilhado pelas duas rotas):
+  - GET: bounds precisam ser números finitos, ordenados, com no máximo **2°** por lado; resposta limitada a **500** venues.
+  - POST: nome de 2–80 caracteres; lat/lng dentro do **estado de SP** (bbox aproximada); textos de endereço truncados em 200 caracteres.
+  - Preços (POST e PATCH): até 20 itens; tipo válido; marca 1–60 caracteres; preço > 0 e ≤ **R$ 500** (arredondado a centavos); volume opcional ≤ 5000 ml.
+  - PATCH: id precisa ser UUID; responde 404 se o bar não existe (antes de alterar qualquer coisa); erros ao apagar/inserir preços retornam 500.
+  - POST: se os preços falharem ao gravar, o bar recém-criado é apagado (não fica bar sem preço).
+  - Mensagens de erro do banco não são devolvidas ao cliente (só logadas no servidor).
 - **Writes (produção)**: por segurança, operações de escrita podem ficar **bloqueadas em produção** até que Auth/RLS do Supabase esteja implementado. Para reabilitar, configure `USER_EDITS_ENABLED=true` no ambiente.
 - **Schema**: `venues` (id, name, address, neighborhood, city, state, lat, lng, has_happy_hour, happy_hour_details, photo_url, created_at, user_added, source); `beer_prices` (id, venue_id, type, label, price_brl, volume_ml, created_at). Migração em `supabase/migrations/001_venues_and_beer_prices.sql`.
 - **Sincronização futura**: workers ou Edge Functions podem popular/atualizar `venues` a partir do Google Places (ou outras fontes) de forma assíncrona; o mapa continua consultando apenas o nosso banco.
@@ -134,13 +143,13 @@ Ao selecionar um bar no mapa ou na lista:
 - Acesso pelo botão **“Adicionar bar”** na barra inferior.
 - Modal com formulário:
   - Nome do bar * (obrigatório)
-  - **Localização**: campo “Buscar endereço” que usa **Nominatim (OpenStreetMap)** para geocodificar; ao selecionar um resultado, preenche coordenadas (lat/lng) e os campos Endereço, Bairro, Cidade e Estado. O salvamento só é permitido após selecionar um endereço da lista (não há fallback para o centro do mapa e não há campos Lat/Lng manuais).
+  - **Localização**: campo “Buscar endereço” que usa **Nominatim (OpenStreetMap)** para geocodificar; ao selecionar um resultado, preenche coordenadas (lat/lng) e os campos Endereço, Bairro (suburb/neighbourhood/quarter do OSM), Cidade e Estado. O botão **Salvar bar** fica desabilitado até um endereço da lista ser selecionado (não há fallback para o centro do mapa e não há campos Lat/Lng manuais). Bairro/cidade ficam vazios quando o OSM não informa (sem mais o padrão "São Paulo").
   - Endereço, Bairro, Cidade, Estado (editáveis; podem vir preenchidos pela busca de localização)
   - Preços de cerveja *: lista dinâmica de entradas (tipo + marca + preço). Cada linha: dropdown de tipo (Chope, Long neck, Lata, Garrafa, Outro), campo "Marca" (ex.: Brahma, Heineken) e valor em R$. Botão "Adicionar cerveja" adiciona nova linha; cada linha pode ser removida (exceto a última). Ao menos uma entrada com preço > 0 é obrigatória. Permite múltiplas marcas por tipo (ex.: Chope Brahma e Chope Heineken).
   - Checkbox “Tem happy hour” + campo “Detalhes do happy hour”
-- Ao salvar: novo bar é criado com `id` (UUID), `createdAt`, `userAdded: true` e adicionado à lista em memória; preços aparecem como “não verificados” no detalhe.
+- Ao salvar: o botão mostra "Salvando..."; o bar é criado via POST e adicionado à lista; preços aparecem como “não verificados” no detalhe. Se falhar, o erro aparece no modal (ex.: "Adicionar e editar bares está temporariamente desativado" quando a escrita está bloqueada em produção) e o formulário é mantido. O modal "Adicionar preços" segue o mesmo fluxo.
 
-**Arquivos**: `src/components/AddVenueModal.tsx`, `src/app/page.tsx`, `src/lib/geocode.ts`.
+**Arquivos**: `src/components/AddVenueModal.tsx`, `src/components/AddPricesModal.tsx`, `src/app/page.tsx`, `src/lib/api.ts` (`saveErrorMessage`), `src/lib/geocode.ts`.
 
 ---
 
@@ -154,12 +163,22 @@ Ao selecionar um bar no mapa ou na lista:
 
 ---
 
+## 9. Erros e compartilhamento
+
+- **Error boundary** (`src/app/error.tsx`): se algo quebrar ao renderizar, aparece "Algo deu errado" com botão **Tentar de novo** em vez de tela em branco. Falhas do Google Maps continuam tratadas dentro de `Map.tsx` (mensagem + timeout de 12 s).
+- **Metadados de compartilhamento** (`src/app/layout.tsx`): título, descrição, Open Graph e Twitter card em pt-BR; `metadataBase` usa `NEXT_PUBLIC_SITE_URL` ou, no Vercel, `VERCEL_PROJECT_PRODUCTION_URL`.
+- **Imagem de compartilhamento** (`src/app/opengraph-image.png` + `.alt.txt`): card estático 1200×630 (usado por WhatsApp, Instagram, X). Para mudar, substitua o PNG.
+
+**Arquivos**: `src/app/error.tsx`, `src/app/layout.tsx`, `src/app/opengraph-image.png`.
+
+---
+
 ## Modelo de dados (resumo)
 
 - **Venue**: id, name, address, neighborhood, city, state, lat, lng, beerPrices (pode ser [] para lugares do Google), hasHappyHour, happyHourDetails?, photoUrl?, createdAt, userAdded?, fromOsm?, fromGoogle?.
 - **BeerPrice**: type (BeerType), label (marca/nome, ex.: "Brahma" ou "Chope" quando genérico), priceBRL, volumeMl?.
 - **BeerType**: `"chope"` | `"long_neck"` | `"lata"` | `"garrafa"` | `"outro"`.
-- **SortOption**: `"price_asc"` | `"price_desc"` | `"distance"` | `"name"` (distance ainda não usado na UI).
+- **SortOption**: `"price_asc"` | `"price_desc"` | `"distance"` | `"name"`.
 
 **Arquivos**: `src/types/index.ts`, `src/data/venues.ts`.
 

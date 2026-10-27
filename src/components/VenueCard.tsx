@@ -28,7 +28,7 @@ export function VenueCard({
       }`}
     >
       <p className="font-semibold text-stone-100">{venue.name}</p>
-      <p className="text-stone-500 text-sm">{venue.neighborhood}</p>
+      <p className="text-stone-500 text-sm">{venue.neighborhood || venue.city}</p>
       <div className="flex flex-wrap gap-2 mt-2">
         {venue.beerPrices.length === 0 ? (
           <span className="text-xs px-2 py-0.5 rounded bg-stone-800 text-stone-500">

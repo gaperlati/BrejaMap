@@ -11,6 +11,8 @@ export interface NominatimResult {
     country?: string;
     road?: string;
     suburb?: string;
+    neighbourhood?: string;
+    quarter?: string;
   };
 }
 
@@ -26,6 +28,9 @@ export async function searchAddress(
     format: "json",
     addressdetails: "1",
     limit: "6",
+    // The app only covers Brazil; restricting results avoids picking a homonym abroad.
+    countrycodes: "br",
+    "accept-language": "pt-BR",
   });
   const res = await fetch(`${NOMINATIM_URL}?${params}`, {
     headers: { "User-Agent": USER_AGENT },

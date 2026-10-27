@@ -28,19 +28,19 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 ### Deploy e dados
 
 - [ ] Documentar processo de deploy: rodar migração + seed no Supabase (dashboard ou CI/CD) para produção ter dados iniciais
-- [ ] Verificar variáveis de ambiente documentadas: `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (README e plataforma de deploy)
+- [x] Verificar variáveis de ambiente documentadas (ver `.env.example`): `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (README e plataforma de deploy)
 - [ ] Opcional: implementar fallback Overpass no backend (quando Supabase retorna 0 venues, chamar Overpass para popular região) — ver [features.md](./features.md) seção 3.2
 
 ### Polimento e robustez
 
-- [ ] Meta tags e Open Graph: título, descrição, imagem para compartilhamento em redes sociais (atualizar `src/app/layout.tsx`)
-- [ ] Error boundaries ou tratamento gracioso: map/API failures devem mostrar mensagem clara ao usuário, não tela em branco
-- [ ] "Minha conta" na navegação: implementar tela placeholder ("Em breve") ou ocultar até pós-release para evitar UX de dead-end
+- [x] Meta tags e Open Graph: título, descrição, imagem para compartilhamento em redes sociais (atualizar `src/app/layout.tsx`)
+- [x] Error boundaries ou tratamento gracioso: map/API failures devem mostrar mensagem clara ao usuário, não tela em branco
+- [x] "Minha conta" na navegação: oculto até pós-release (a barra inferior só tem Mapa e Adicionar bar)
 
 ### Qualidade
 
 - [ ] Teste manual completo: adicionar bar, editar preços, busca, filtros, empty state em mobile e desktop
-- [ ] Build de produção: `npm run build` sem erros críticos; verificar console no build de produção
+- [x] Build de produção: `npm run build` sem erros críticos; verificar console no build de produção
 
 ---
 
@@ -70,7 +70,6 @@ Backlog de features priorizadas com base em [MGB_FEATURES_AND_BRAZIL.md](../MGB_
 - **Transmissão de futebol**: Filtro "Transmite futebol" e tag no venue. Schema: adicionar coluna booleana `transmits_football` em `venues` ou usar sistema de tags; adicionar filtro na UI e tag no sheet/card.
 - **Bar reservável**: Filtro "Aceita reserva" / "Reservável" e tag. Mesmo padrão: coluna `accepts_reservations` ou tag; filtro + exibição.
 - **Aberto/fechado (horário)**: Horários de funcionamento ou status "Aberto agora" / "Fechado". Schema: campo opcional `opening_hours` (JSON ou texto estruturado); exibir no sheet e opcionalmente filtrar por "Aberto agora".
-- **Ordenar por distância**: Implementar `sort === "distance"` usando localização do usuário (ou centro do mapa). Já existe no tipo `SortOption`; falta implementar cálculo e ordenação na UI.
 - **Tags adicionais**: Terraço, quantidade de cervejas (pode ser derivado de `beerPrices.length`), etc. Exibir no sheet/card como tags visuais.
 
 ### Depois (auth e engajamento)

@@ -3,8 +3,15 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { MOCK_VENUES, SAO_CARLOS_CENTER, DEFAULT_ZOOM } from "@/data/venues";
-import { fetchVenuesInBounds, createVenue, updateVenuePrices } from "@/lib/api";
-import { expandBounds } from "@/lib/google-places";
+import {
+  fetchVenuesInBounds,
+  createVenue,
+  updateVenuePrices,
+  saveErrorMessage,
+  type ApiError,
+  type VenueFromAPI,
+} from "@/lib/api";
+import { expandBounds, distanceKm } from "@/lib/geo";
 import type { Venue, SortOption, PriceFilter, BeerType } from "@/types";
 import { FilterBar } from "@/components/FilterBar";
 import { VenueList } from "@/components/VenueList";
@@ -71,6 +78,19 @@ function getMinBeerPrice(venue: Venue): number {
   return Math.min(...venue.beerPrices.map((p) => p.priceBRL));
 }
 
+function apiVenueToVenue(v: VenueFromAPI): Venue {
+  return {
+    ...v,
+    beerPrices: (v.beerPrices ?? []).map((p) => ({
+      type: p.type as BeerType,
+      label: p.label,
+      priceBRL: p.priceBRL,
+      volumeMl: p.volumeMl,
+    })),
+    hasHappyHour: v.hasHappyHour ?? false,
+  };
+}
+
 function venueKeyByPlace(venue: Venue): string {
   return `${venue.name.trim().toLowerCase()}|${venue.lat.toFixed(5)}|${venue.lng.toFixed(5)}`;
 }
@@ -88,6 +108,8 @@ export default function Home() {
     east: number;
   }>(() => boundsFromCenterAndZoom(SAO_CARLOS_CENTER, DEFAULT_ZOOM));
   const [searchMarker, setSearchMarker] = useState<{ lat: number; lng: number } | null>(null);
+  /** Last known user position (browser or IP geolocation); origin for "Mais perto" sorting. */
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [maxPrice, setMaxPrice] = useState<PriceFilter>(null);
   const [beerType, setBeerType] = useState<BeerType | "">("");
   const [neighborhood, setNeighborhood] = useState("");
@@ -202,21 +224,7 @@ export default function Home() {
       fetchVenuesInBounds(requestBounds)
         .then((apiVenues) => {
           if (requestId !== osmRequestIdRef.current) return;
-          const asVenues: Venue[] = apiVenues.map((v) => ({
-            ...v,
-            id: v.id,
-            beerPrices: (v.beerPrices ?? []).map((p) => ({
-              type: p.type as BeerType,
-              label: p.label,
-              priceBRL: p.priceBRL,
-              volumeMl: p.volumeMl,
-            })),
-            hasHappyHour: v.hasHappyHour ?? false,
-            createdAt: v.createdAt,
-            userAdded: v.userAdded,
-            fromOsm: v.fromOsm,
-            fromGoogle: v.fromGoogle,
-          }));
+          const asVenues: Venue[] = apiVenues.map(apiVenueToVenue);
           mergeExternalIntoState(asVenues);
           setOsmLoadState("success");
 
@@ -308,6 +316,7 @@ export default function Home() {
         setMapCenter({ lat, lng });
         setMapZoom(PRECISE_LOCATION_ZOOM);
         setSearchMarker({ lat, lng });
+        setUserLocation({ lat, lng });
       },
       () => {
         /* denied or error — silent; user can search address */
@@ -337,6 +346,7 @@ export default function Home() {
       setMapCenter({ lat, lng });
       setMapZoom(zoom);
       setSearchMarker({ lat, lng });
+      setUserLocation({ lat, lng });
     };
 
     const fallbackToIpLocation = async () => {
@@ -390,8 +400,8 @@ export default function Home() {
   }, [venues, mapBounds]);
 
   const neighborhoods = useMemo(() => {
-    const set = new Set(venuesInBounds.map((v) => v.neighborhood));
-    return Array.from(set).sort();
+    const set = new Set(venuesInBounds.map((v) => v.neighborhood.trim()).filter(Boolean));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [venuesInBounds]);
 
   const hasActiveFilters =
@@ -423,99 +433,72 @@ export default function Home() {
     } else if (sort === "price_desc") {
       list.sort((a, b) => getMinBeerPrice(b) - getMinBeerPrice(a));
     } else if (sort === "name") {
-      list.sort((a, b) => a.name.localeCompare(b.name));
+      list.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    } else if (sort === "distance") {
+      // Without a known user position, "nearest" means nearest to the map center.
+      const origin = userLocation ?? mapCenter;
+      const dist = new globalThis.Map(list.map((v) => [v.id, distanceKm(origin, v)]));
+      list.sort((a, b) => dist.get(a.id)! - dist.get(b.id)!);
     }
     return list;
-  }, [venuesInBounds, maxPrice, beerType, neighborhood, happyHourOnly, sort]);
+  }, [venuesInBounds, maxPrice, beerType, neighborhood, happyHourOnly, sort, userLocation, mapCenter]);
 
   const selectedVenue = useMemo(
     () => (selectedVenueId ? venues.find((v) => v.id === selectedVenueId) ?? null : null),
     [venues, selectedVenueId]
   );
 
+  /**
+   * Saves through the API. Only when the backend isn't configured at all (503, e.g. local
+   * demo without Supabase) do we keep the change in memory; any other failure is thrown as a
+   * user-facing message so the modal can show it instead of pretending the save worked.
+   */
   const handleAddVenue = useCallback(async (venue: Omit<Venue, "id" | "createdAt">) => {
-    const fallback = () => {
-      const newVenue: Venue = {
+    let saved: Venue;
+    try {
+      saved = apiVenueToVenue(
+        await createVenue({
+          name: venue.name,
+          address: venue.address,
+          neighborhood: venue.neighborhood,
+          city: venue.city,
+          state: venue.state,
+          lat: venue.lat,
+          lng: venue.lng,
+          beerPrices: venue.beerPrices,
+          hasHappyHour: venue.hasHappyHour,
+          happyHourDetails: venue.happyHourDetails,
+        })
+      );
+    } catch (e) {
+      if ((e as ApiError).status !== 503) throw new Error(saveErrorMessage(e));
+      saved = {
         ...venue,
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
         userAdded: true,
       };
-      setVenues((prev) => [...prev, newVenue]);
-      setAddModalOpen(false);
-    };
-    try {
-      const created = await createVenue({
-        name: venue.name,
-        address: venue.address,
-        neighborhood: venue.neighborhood,
-        city: venue.city,
-        state: venue.state,
-        lat: venue.lat,
-        lng: venue.lng,
-        beerPrices: venue.beerPrices,
-        hasHappyHour: venue.hasHappyHour,
-        happyHourDetails: venue.happyHourDetails,
-      });
-      const asVenue: Venue = {
-        ...created,
-        id: created.id,
-        beerPrices: (created.beerPrices ?? []).map((p) => ({
-          type: p.type as BeerType,
-          label: p.label,
-          priceBRL: p.priceBRL,
-          volumeMl: p.volumeMl,
-        })),
-        hasHappyHour: created.hasHappyHour ?? false,
-        createdAt: created.createdAt,
-        userAdded: created.userAdded,
-        fromOsm: created.fromOsm,
-        fromGoogle: created.fromGoogle,
-      };
-      setVenues((prev) => [...prev, asVenue]);
-      setAddModalOpen(false);
-    } catch {
-      fallback();
     }
+    setVenues((prev) => [...prev, saved]);
+    setAddModalOpen(false);
   }, []);
 
   const handleUpdateVenuePrices = useCallback(async (updatedVenue: Venue) => {
-    const fallback = () => {
-      setVenues((prev) =>
-        prev.map((v) => (v.id === updatedVenue.id ? updatedVenue : v))
-      );
-      setVenueToEditPrices(null);
-      setSelectedVenueId((id) => (id === updatedVenue.id ? id : null));
-    };
+    let saved: Venue;
     try {
-      const saved = await updateVenuePrices(updatedVenue.id, {
-        beerPrices: updatedVenue.beerPrices,
-        hasHappyHour: updatedVenue.hasHappyHour,
-        happyHourDetails: updatedVenue.happyHourDetails,
-      });
-      const asVenue: Venue = {
-        ...saved,
-        id: saved.id,
-        beerPrices: (saved.beerPrices ?? []).map((p) => ({
-          type: p.type as BeerType,
-          label: p.label,
-          priceBRL: p.priceBRL,
-          volumeMl: p.volumeMl,
-        })),
-        hasHappyHour: saved.hasHappyHour ?? false,
-        createdAt: saved.createdAt,
-        userAdded: saved.userAdded,
-        fromOsm: saved.fromOsm,
-        fromGoogle: saved.fromGoogle,
-      };
-      setVenues((prev) =>
-        prev.map((v) => (v.id === updatedVenue.id ? asVenue : v))
+      saved = apiVenueToVenue(
+        await updateVenuePrices(updatedVenue.id, {
+          beerPrices: updatedVenue.beerPrices,
+          hasHappyHour: updatedVenue.hasHappyHour,
+          happyHourDetails: updatedVenue.happyHourDetails,
+        })
       );
-      setVenueToEditPrices(null);
-      setSelectedVenueId((id) => (id === updatedVenue.id ? id : null));
-    } catch {
-      fallback();
+    } catch (e) {
+      if ((e as ApiError).status !== 503) throw new Error(saveErrorMessage(e));
+      saved = updatedVenue;
     }
+    setVenues((prev) => prev.map((v) => (v.id === updatedVenue.id ? saved : v)));
+    setVenueToEditPrices(null);
   }, []);
 
   return (
@@ -601,6 +584,7 @@ export default function Home() {
             sortOptions={[
               { value: "price_asc", label: "Menor preço" },
               { value: "price_desc", label: "Maior preço" },
+              { value: "distance", label: "Mais perto" },
               { value: "name", label: "Nome" },
             ]}
           />

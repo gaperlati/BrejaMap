@@ -1,64 +1,21 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase-server";
-import type { Venue, BeerPrice } from "@/types";
-import type { BeerType } from "@/types";
-
-type VenueRow = {
-  id: string;
-  name: string;
-  address: string;
-  neighborhood: string;
-  city: string;
-  state: string;
-  lat: number;
-  lng: number;
-  has_happy_hour: boolean;
-  happy_hour_details: string | null;
-  photo_url: string | null;
-  created_at: string;
-  user_added: boolean;
-  source: "user" | "google" | "osm";
-};
-
-type BeerPriceRow = {
-  id: string;
-  venue_id: string;
-  type: string;
-  label: string;
-  price_brl: number;
-  volume_ml: number | null;
-  created_at: string;
-};
-
-function rowToVenue(row: VenueRow, prices: BeerPriceRow[]): Venue {
-  const beerPrices: BeerPrice[] = prices
-    .filter((p) => p.venue_id === row.id)
-    .map((p) => ({
-      type: p.type as BeerType,
-      label: p.label,
-      priceBRL: Number(p.price_brl),
-      volumeMl: p.volume_ml ?? undefined,
-    }));
-  return {
-    id: row.id,
-    name: row.name,
-    address: row.address,
-    neighborhood: row.neighborhood,
-    city: row.city,
-    state: row.state,
-    lat: row.lat,
-    lng: row.lng,
-    beerPrices,
-    hasHappyHour: row.has_happy_hour,
-    happyHourDetails: row.happy_hour_details ?? undefined,
-    photoUrl: row.photo_url ?? undefined,
-    createdAt: row.created_at,
-    userAdded: row.user_added,
-    fromOsm: row.source === "osm",
-    fromGoogle: row.source === "google",
-  };
-}
+import type { Venue } from "@/types";
+import {
+  type VenueRow,
+  type BeerPriceRow,
+  rowToVenue,
+  sanitizeBeerPrices,
+  cleanString,
+  isInsideSpState,
+  writesBlockedResponse,
+  MAX_NAME_LEN,
+  MAX_ADDRESS_FIELD_LEN,
+  MAX_HAPPY_HOUR_DETAILS_LEN,
+  MAX_BOUNDS_SPAN_DEG,
+  MAX_VENUES_PER_REQUEST,
+} from "@/lib/venue-server";
 
 function venueDedupKey(venue: Venue): string {
   const normalizedName = venue.name.trim().toLowerCase();
@@ -91,9 +48,15 @@ export async function GET(request: NextRequest) {
   }
   const [south, west, north, east] = bounds.split(",").map(Number);
   if (
-    [south, west, north, east].some((n) => typeof n !== "number" || Number.isNaN(n))
+    [south, west, north, east].some((n) => typeof n !== "number" || !Number.isFinite(n)) ||
+    south > north ||
+    west > east
   ) {
     return NextResponse.json({ error: "Invalid bounds" }, { status: 400 });
+  }
+  // Refuse huge areas so a single request can't dump the whole table.
+  if (north - south > MAX_BOUNDS_SPAN_DEG || east - west > MAX_BOUNDS_SPAN_DEG) {
+    return NextResponse.json({ error: "Bounds too large; zoom in" }, { status: 400 });
   }
 
   if (!supabase) {
@@ -110,7 +73,8 @@ export async function GET(request: NextRequest) {
     .lte("lat", north)
     .gte("lng", west)
     .lte("lng", east)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .limit(MAX_VENUES_PER_REQUEST);
 
   if (venuesError) {
     console.error("Supabase venues error:", venuesError);
@@ -156,17 +120,8 @@ export async function GET(request: NextRequest) {
  * POST /api/venues - Create a new venue (e.g. from "Adicionar bar").
  */
 export async function POST(request: NextRequest) {
-  // Safety for deploy: block public write operations until Supabase Auth/RLS is in place.
-  // To re-enable writes, set `USER_EDITS_ENABLED=true` in the production environment.
-  if (
-    process.env.NODE_ENV === "production" &&
-    process.env.USER_EDITS_ENABLED !== "true"
-  ) {
-    return NextResponse.json(
-      { error: "User edits are disabled in production" },
-      { status: 403 }
-    );
-  }
+  const blocked = writesBlockedResponse();
+  if (blocked) return blocked;
 
   if (!supabase) {
     return NextResponse.json(
@@ -175,99 +130,60 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: {
-    name: string;
-    address?: string;
-    neighborhood?: string;
-    city?: string;
-    state?: string;
-    lat: number;
-    lng: number;
-    beerPrices: { type: string; label: string; priceBRL: number; volumeMl?: number }[];
-    hasHappyHour?: boolean;
-    happyHourDetails?: string;
-  };
+  let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    const parsed: unknown = await request.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+    body = parsed as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const lat = body.lat;
+  const lng = body.lng;
+
+  if (name.length < 2 || name.length > MAX_NAME_LEN) {
+    return NextResponse.json({ error: "Invalid name" }, { status: 400 });
+  }
   if (
-    !body.name ||
-    typeof body.lat !== "number" ||
-    typeof body.lng !== "number"
+    typeof lat !== "number" ||
+    typeof lng !== "number" ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng)
   ) {
+    return NextResponse.json({ error: "Invalid lat/lng" }, { status: 400 });
+  }
+  if (!isInsideSpState(lat, lng)) {
     return NextResponse.json(
-      { error: "name, lat, lng required" },
+      { error: "Location must be in São Paulo state" },
       { status: 400 }
     );
   }
 
-  const name = body.name.trim();
-  const lat = body.lat;
-  const lng = body.lng;
-  const happyHourDetails = (body.happyHourDetails ?? "").trim();
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    return NextResponse.json({ error: "Invalid lat/lng" }, { status: 400 });
-  }
-
-  if (name.length < 2 || name.length > 80) {
-    return NextResponse.json({ error: "Invalid name length" }, { status: 400 });
-  }
-
-  const ALLOWED_BEER_TYPES: BeerType[] = ["chope", "long_neck", "lata", "garrafa", "outro"];
-  const maxBeerPrices = 20;
-  const maxHappyHourDetailsLen = 160;
-
-  const sanitizedBeerPrices: { type: BeerType; label: string; priceBRL: number; volumeMl?: number }[] = Array.isArray(body.beerPrices)
-    ? body.beerPrices.slice(0, maxBeerPrices).flatMap((p) => {
-        if (!p || typeof p !== "object") return [];
-        const type = p.type as BeerType;
-        if (!ALLOWED_BEER_TYPES.includes(type)) return [];
-        const label = (p.label ?? "").trim();
-        const priceBRL = Number(p.priceBRL);
-        const volumeMl =
-          p.volumeMl == null ? undefined : Number(p.volumeMl);
-
-        if (label.length < 1 || label.length > 60) return [];
-        if (!Number.isFinite(priceBRL) || priceBRL <= 0 || priceBRL > 5000) return [];
-        if (volumeMl != null && (!Number.isFinite(volumeMl) || volumeMl < 0 || volumeMl > 5000)) return [];
-
-        return [
-          {
-            type,
-            label,
-            priceBRL,
-            ...(volumeMl != null ? { volumeMl } : {}),
-          },
-        ];
-      })
-    : [];
-
-  if (sanitizedBeerPrices.length === 0) {
+  const beerPrices = sanitizeBeerPrices(body.beerPrices);
+  if (beerPrices.length === 0) {
     return NextResponse.json(
       { error: "At least one valid beer price is required" },
       { status: 400 }
     );
   }
 
+  const hasHappyHour = body.hasHappyHour === true;
+  const happyHourDetails = cleanString(body.happyHourDetails, MAX_HAPPY_HOUR_DETAILS_LEN);
+
   const { data: venueRow, error: insertVenueError } = await supabase
     .from("venues")
     .insert({
       name,
-      address: (body.address ?? "").trim() || "Endereço não informado",
-      neighborhood: (body.neighborhood ?? "").trim() || "São Paulo",
-      city: (body.city ?? "").trim() || "São Paulo",
-      state: (body.state ?? "").trim() || "SP",
+      address: cleanString(body.address, MAX_ADDRESS_FIELD_LEN) || "Endereço não informado",
+      neighborhood: cleanString(body.neighborhood, MAX_ADDRESS_FIELD_LEN),
+      city: cleanString(body.city, MAX_ADDRESS_FIELD_LEN),
+      state: cleanString(body.state, MAX_ADDRESS_FIELD_LEN) || "SP",
       lat,
       lng,
-      has_happy_hour: body.hasHappyHour ?? false,
-      happy_hour_details:
-        (body.hasHappyHour ?? false) && happyHourDetails
-          ? happyHourDetails.slice(0, maxHappyHourDetailsLen)
-          : null,
+      has_happy_hour: hasHappyHour,
+      happy_hour_details: hasHappyHour && happyHourDetails ? happyHourDetails : null,
       user_added: true,
       source: "user",
     })
@@ -275,33 +191,40 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (insertVenueError || !venueRow) {
+    console.error("Supabase insert venue error:", insertVenueError);
     return NextResponse.json(
-      { error: insertVenueError?.message ?? "Failed to create venue" },
+      { error: "Failed to create venue" },
       { status: 500 }
     );
   }
 
   const venueId = (venueRow as VenueRow).id;
-  if (sanitizedBeerPrices.length > 0) {
-    const rows = sanitizedBeerPrices.map((p) => ({
-      venue_id: venueId,
-      type: p.type,
-      label: p.label,
-      price_brl: p.priceBRL,
-      volume_ml: p.volumeMl ?? null,
-    }));
-
-    await supabase.from("beer_prices").insert(rows);
-  }
-
-  const { data: priceRows } = await supabase
+  const { data: priceRows, error: insertPricesError } = await supabase
     .from("beer_prices")
-    .select("*")
-    .eq("venue_id", venueId);
+    .insert(
+      beerPrices.map((p) => ({
+        venue_id: venueId,
+        type: p.type,
+        label: p.label,
+        price_brl: p.priceBRL,
+        volume_ml: p.volumeMl ?? null,
+      }))
+    )
+    .select("*");
+
+  if (insertPricesError) {
+    // Don't leave a price-less venue behind when the prices failed to save.
+    console.error("Supabase insert beer_prices error:", insertPricesError);
+    await supabase.from("venues").delete().eq("id", venueId);
+    return NextResponse.json(
+      { error: "Failed to save beer prices" },
+      { status: 500 }
+    );
+  }
 
   const venue = rowToVenue(
     venueRow as VenueRow,
     (priceRows ?? []) as BeerPriceRow[]
   );
-  return NextResponse.json({ venue });
+  return NextResponse.json({ venue }, { status: 201 });
 }

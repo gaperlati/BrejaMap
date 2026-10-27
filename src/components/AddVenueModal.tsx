@@ -21,7 +21,8 @@ const SAO_PAULO_CENTER = { lat: -23.5505, lng: -46.6333 };
 interface AddVenueModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (venue: Omit<Venue, "id" | "createdAt">) => void;
+  /** Rejects with a user-facing message when saving fails. */
+  onSubmit: (venue: Omit<Venue, "id" | "createdAt">) => Promise<void>;
   /** Map center when modal opened. */
   initialLat?: number;
   initialLng?: number;
@@ -36,14 +37,16 @@ export function AddVenueModal({
 }: AddVenueModalProps) {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
-  const [neighborhood, setNeighborhood] = useState("São Paulo");
-  const [city, setCity] = useState("São Paulo");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [city, setCity] = useState("");
   const [state, setState] = useState("SP");
   const [lat, setLat] = useState(initialLat);
   const [lng, setLng] = useState(initialLng);
   const [hasHappyHour, setHasHappyHour] = useState(false);
   const [happyHourDetails, setHappyHourDetails] = useState("");
   const [priceRows, setPriceRows] = useState<PriceRow[]>([initialPriceRow()]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [locationQuery, setLocationQuery] = useState("");
   const [locationResults, setLocationResults] = useState<NominatimResult[]>([]);
@@ -98,8 +101,8 @@ export function AddVenueModal({
     setAddress(r.display_name);
     const addr = r.address;
     if (addr) {
-      setNeighborhood(addr.suburb ?? addr.road ?? "—");
-      setCity(addr.city ?? addr.town ?? addr.village ?? "São Paulo");
+      setNeighborhood(addr.suburb ?? addr.neighbourhood ?? addr.quarter ?? "");
+      setCity(addr.city ?? addr.town ?? addr.village ?? "");
       setState(addr.state ?? "SP");
     }
     setLocationQuery(r.display_name);
@@ -132,30 +135,40 @@ export function AddVenueModal({
       }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const canSubmit =
+    name.trim().length >= 2 && locationSelected && validBeerPrices().length > 0 && !saving;
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const beerPrices = validBeerPrices();
-    if (!name.trim() || beerPrices.length === 0) return;
-    onSubmit({
-      name: name.trim(),
-      address: address.trim(),
-      neighborhood: neighborhood.trim() || "São Paulo",
-      city: city.trim() || "São Paulo",
-      state: state.trim() || "SP",
-      lat,
-      lng,
-      beerPrices,
-      hasHappyHour,
-      happyHourDetails: hasHappyHour ? happyHourDetails.trim() : undefined,
-    });
-    resetForm();
+    if (!canSubmit) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSubmit({
+        name: name.trim(),
+        address: address.trim(),
+        neighborhood: neighborhood.trim(),
+        city: city.trim(),
+        state: state.trim() || "SP",
+        lat,
+        lng,
+        beerPrices: validBeerPrices(),
+        hasHappyHour,
+        happyHourDetails: hasHappyHour ? happyHourDetails.trim() : undefined,
+      });
+      resetForm();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Erro ao salvar. Tente novamente.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const resetForm = () => {
     setName("");
     setAddress("");
-    setNeighborhood("São Paulo");
-    setCity("São Paulo");
+    setNeighborhood("");
+    setCity("");
     setState("SP");
     setLat(initialLat);
     setLng(initialLng);
@@ -166,6 +179,7 @@ export function AddVenueModal({
     setHasHappyHour(false);
     setHappyHourDetails("");
     setPriceRows([initialPriceRow()]);
+    setSaveError(null);
   };
 
   const handleClose = () => {
@@ -236,6 +250,7 @@ export function AddVenueModal({
                     <li
                       key={r.place_id}
                       role="option"
+                      aria-selected={false}
                       onClick={() => handleLocationSelect(r)}
                       className="px-3 py-2 text-sm text-stone-200 hover:bg-stone-700 cursor-pointer border-b border-stone-700/50 last:border-0"
                     >
@@ -245,7 +260,7 @@ export function AddVenueModal({
                 </ul>
               )}
             </div>
-            {!locationSelected && locationQuery.trim().length > 0 && (
+            {!locationSelected && (
               <p className="text-xs text-amber-300 mt-2">
                 Selecione um endereço da lista para salvar o bar.
               </p>
@@ -380,6 +395,12 @@ export function AddVenueModal({
             </div>
           )}
 
+          {saveError && (
+            <p role="alert" className="text-sm text-red-300 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">
+              {saveError}
+            </p>
+          )}
+
           <div className="flex gap-2 pt-2">
             <button
               type="button"
@@ -390,10 +411,10 @@ export function AddVenueModal({
             </button>
             <button
               type="submit"
-              disabled={!name.trim() || validBeerPrices().length === 0}
+              disabled={!canSubmit}
               className="px-4 py-2 rounded-lg bg-amber-500 text-stone-950 font-medium hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Salvar bar
+              {saving ? "Salvando..." : "Salvar bar"}
             </button>
           </div>
         </form>
