@@ -67,6 +67,7 @@ export function AddressSearch({
         </span>
         <input
           type="text"
+          role="combobox"
           value={query}
           onChange={(e) => handleChange(e.target.value)}
           onFocus={() => results.length > 0 && setOpen(true)}
@@ -93,6 +94,7 @@ export function AddressSearch({
             <li
               key={r.place_id}
               role="option"
+              aria-selected={false}
               tabIndex={0}
               onClick={() => handleSelect(r)}
               onKeyDown={(e) => {

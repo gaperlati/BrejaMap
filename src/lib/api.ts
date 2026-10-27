@@ -2,11 +2,24 @@
  * Client-side API: fetch venues in bounds from our backend (no Google Places on the client).
  */
 
-export interface Bounds {
-  south: number;
-  west: number;
-  north: number;
-  east: number;
+import type { Bounds } from "@/lib/geo";
+
+export type ApiError = Error & { status?: number };
+
+/** User-facing (pt-BR) message for a failed create/update call. */
+export function saveErrorMessage(e: unknown): string {
+  const err = e as ApiError;
+  if (err?.status === 403) {
+    return "Adicionar e editar bares está temporariamente desativado. Volte em breve!";
+  }
+  if (err?.status === 400) {
+    if (err.message?.includes("São Paulo state")) {
+      return "Por enquanto só aceitamos bares no estado de São Paulo.";
+    }
+    return "Não foi possível salvar: verifique os dados e tente novamente.";
+  }
+  if (err?.status === 404) return "Este bar não existe mais.";
+  return "Erro ao salvar. Verifique sua conexão e tente novamente.";
 }
 
 export interface VenueFromAPI {
@@ -35,9 +48,7 @@ export async function fetchVenuesInBounds(bounds: Bounds): Promise<VenueFromAPI[
   const res = await fetch(`/api/venues?${params}`);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error((body.error as string) || `API error: ${res.status}`) as Error & {
-      status?: number;
-    };
+    const err = new Error((body.error as string) || `API error: ${res.status}`) as ApiError;
     err.status = res.status;
     throw err;
   }
@@ -64,9 +75,7 @@ export async function createVenue(venue: {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error((body.error as string) || `API error: ${res.status}`) as Error & {
-      status?: number;
-    };
+    const err = new Error((body.error as string) || `API error: ${res.status}`) as ApiError;
     err.status = res.status;
     throw err;
   }
@@ -89,9 +98,7 @@ export async function updateVenuePrices(
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error((body.error as string) || `API error: ${res.status}`) as Error & {
-      status?: number;
-    };
+    const err = new Error((body.error as string) || `API error: ${res.status}`) as ApiError;
     err.status = res.status;
     throw err;
   }

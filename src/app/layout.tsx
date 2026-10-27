@@ -8,9 +8,34 @@ const plusJakarta = Plus_Jakarta_Sans({
   display: "swap",
 });
 
+/** Absolute base for OG/canonical URLs. Vercel sets VERCEL_PROJECT_PRODUCTION_URL automatically. */
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "http://localhost:3000");
+
+const title = "BrejaMap | Mapa de preços de cerveja";
+const description =
+  "Encontre os bares com a cerveja mais barata perto de você: chope, long neck, lata e happy hour no mapa.";
+
 export const metadata: Metadata = {
-  title: "BrejaMap | Mapa de preços de cerveja",
-  description: "Encontre bares e cervejas com os melhores preços.",
+  metadataBase: new URL(siteUrl),
+  title,
+  description,
+  applicationName: "BrejaMap",
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    siteName: "BrejaMap",
+    title,
+    description,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+  },
 };
 
 /** Lets `env(safe-area-inset-*)` resolve on notched iPhones / home indicator. */
@@ -18,6 +43,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: "#0c0a09",
 };
 
 export default function RootLayout({
