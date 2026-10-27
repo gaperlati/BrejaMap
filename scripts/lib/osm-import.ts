@@ -62,6 +62,7 @@ export function parseArgs(argv: string[]): ParseResult {
   let bboxRaw: string | null = null;
   let city: string | null = null;
   let write = false;
+  let dryRun = false;
   let outFile: string | null = null;
   let maxRetries = 1;
 
@@ -80,6 +81,7 @@ export function parseArgs(argv: string[]): ParseResult {
         write = true;
         break;
       case "--dry-run":
+        dryRun = true;
         break;
       case "--preset":
         preset = next();
@@ -111,6 +113,12 @@ export function parseArgs(argv: string[]): ParseResult {
     }
   }
 
+  if (write && dryRun) {
+    return { ok: false, error: "use --write ou --dry-run, não os dois" };
+  }
+  if (city !== null && bboxRaw === null) {
+    return { ok: false, error: "--city só vale com --bbox" };
+  }
   if (preset !== null && bboxRaw !== null) {
     return { ok: false, error: "use --preset ou --bbox, não os dois" };
   }

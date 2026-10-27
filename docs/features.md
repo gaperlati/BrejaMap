@@ -104,6 +104,7 @@ Ao publicar o app, o Supabase começa vazio. Opções para o usuário não ficar
 - **Dry-run por padrão**: sem `--write` nada é gravado e o banco não é acessado. `--write` exige escopo explícito, `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` (validados antes da rede; a chave nunca é exibida) e a migração `002_venues_external_id.sql`.
 - **Idempotência**: identidade estável `external_id` (`osm-node-123` ≠ `osm-way-123`) com índice único; a gravação é `INSERT ... ON CONFLICT (external_id) DO NOTHING`. Repetir ou rodar em paralelo não duplica, e bares já existentes nunca são alterados (preços, happy hour e edições ficam preservados). `beer_prices` nunca é tocada.
 - **Limites do Overpass**: uma requisição com timeout; 429/502/503/504 são repetidos no máximo `--max-retries` vezes (padrão 1), respeitando `Retry-After`.
+- **Segurança do modo**: combinar `--dry-run` e `--write` é rejeitado antes da rede. A deduplicação usa `external_id`; bares cadastrados manualmente sem esse identificador podem gerar outra linha e precisam de revisão.
 - **Atribuição**: dados © colaboradores do OpenStreetMap (ODbL).
 - Comandos completos no [README](../README.md#importar-bares-do-openstreetmap-operador).
 

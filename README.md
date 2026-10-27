@@ -46,6 +46,8 @@ npm run test:scripts
 ```
 
 - **Sem argumentos** o script usa o preset `sao-carlos` (área urbana de São Carlos, cidade de lançamento) em dry-run.
+- **Modo explícito**: `--dry-run` também é aceito; combiná-lo com `--write` é um erro, antes de qualquer acesso à rede.
+- **Bares cadastrados manualmente**: sem o mesmo `external_id`, um cadastro existente não impede uma nova linha do OSM. Revise possíveis duplicatas; o script não concilia esses registros.
 - **Cidade**: vem de `addr:city` do OSM. Se faltar, usa a cidade do preset ou a de `--city`; com `--bbox` sem `--city`, fica vazia (nunca vira "São Paulo").
 - **Ignorados**: lugares sem nome, fora da bbox/SP ou marcados com outro estado.
 - **Idempotente e conservador**: cada bar recebe `external_id` tipado (`osm-node-123`, `osm-way-123`, `osm-relation-123`) com `source='osm'` e `user_added=false`. A gravação é `INSERT ... ON CONFLICT (external_id) DO NOTHING`: rodar de novo (ou em paralelo) não duplica, e bares já existentes **não são alterados** — nome, preços, happy hour e edições da comunidade ficam como estão. A tabela `beer_prices` nunca é tocada. Para trazer mudanças do OSM em bares já importados, é preciso tratar à parte.

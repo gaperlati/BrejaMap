@@ -218,6 +218,9 @@ test("parseArgs: generic bbox leaves city unknown unless --city is given", () =>
 
 test("parseArgs rejects invalid input before any network call", () => {
   const bad = [
+    ["--preset", "sao-carlos", "--write", "--dry-run"],
+    ["--preset", "sao-carlos", "--dry-run", "--write"],
+    ["--city", "Campinas"],
     ["--write"],
     ["--bbox", "-22,-47,-21"],
     ["--bbox", "a,b,c,d"],
@@ -235,6 +238,11 @@ test("parseArgs rejects invalid input before any network call", () => {
     const r = parseArgs(argv);
     assert.equal(r.ok, false, `expected error for ${argv.join(" ")}`);
   }
+});
+
+test("explicit dry-run never enables writing", () => {
+  const result = parseArgs(["--preset", "sao-carlos", "--dry-run"]);
+  assert.ok(result.ok === true && !result.options.write);
 });
 
 // --- Mapping to rows ---
