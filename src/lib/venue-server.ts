@@ -4,6 +4,8 @@
 
 import { NextResponse } from "next/server";
 import type { BeerPrice, BeerType } from "@/types";
+import type { RpcClient } from "@/lib/venue-writes";
+import { consumeRateLimits, type RateLimitCheck } from "@/lib/write-guards";
 
 export { type VenueRow, type BeerPriceRow, rowToVenue } from "@/lib/venue-rows";
 
@@ -69,13 +71,37 @@ export function sanitizeBeerPrices(input: unknown): BeerPrice[] {
 }
 
 /**
- * Public writes stay blocked in production until Supabase Auth/RLS is in place.
+ * Master kill switch: in production every write (create, edit, report) answers 403 unless
+ * `USER_EDITS_ENABLED=true`. Unset it to turn all writes off instantly.
  * Returns a 403 response when blocked, or null when writes are allowed.
- * To re-enable writes, set `USER_EDITS_ENABLED=true` in the production environment.
  */
 export function writesBlockedResponse(): NextResponse | null {
   if (process.env.NODE_ENV === "production" && process.env.USER_EDITS_ENABLED !== "true") {
     return NextResponse.json({ error: "User edits are disabled in production" }, { status: 403 });
   }
   return null;
+}
+
+/** 401 for POST /api/venues without a valid `Authorization: Bearer <access_token>`. */
+export function authRequiredResponse(): NextResponse {
+  return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+}
+
+/**
+ * Counts the request against the given rate limits. Returns a 429 (with `Retry-After`) when a
+ * limit is exhausted, a 500 when the limits can't be checked (fails closed), or null to proceed.
+ */
+export async function rateLimitedResponse(
+  client: RpcClient,
+  checks: RateLimitCheck[]
+): Promise<NextResponse | null> {
+  const result = await consumeRateLimits(client, checks);
+  if (result.ok) return null;
+  if (result.reason === "limited") {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": String(result.retryAfterSeconds) } }
+    );
+  }
+  return NextResponse.json({ error: "Failed to check rate limit" }, { status: 500 });
 }

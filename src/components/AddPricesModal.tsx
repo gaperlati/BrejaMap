@@ -85,7 +85,7 @@ export function AddPricesModal({
         beerPrices,
         hasHappyHour,
         happyHourDetails: hasHappyHour ? happyHourDetails.trim() || undefined : undefined,
-        userAdded: true,
+        pricesUnverified: true,
       });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Erro ao salvar. Tente novamente.");

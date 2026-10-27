@@ -3,6 +3,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { Venue, BeerType, BeerPrice } from "@/types";
 import { searchAddress, type NominatimResult } from "@/lib/geocode";
+import { getAccessToken, getSupabaseBrowser } from "@/lib/supabase-browser";
+import { useAuthUser } from "@/lib/use-auth-user";
+import { LoginCard } from "@/components/LoginCard";
 
 const BEER_TYPES: { value: BeerType; label: string }[] = [
   { value: "chope", label: "Chope" },
@@ -21,8 +24,11 @@ const SAO_PAULO_CENTER = { lat: -23.5505, lng: -46.6333 };
 interface AddVenueModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Rejects with a user-facing message when saving fails. */
-  onSubmit: (venue: Omit<Venue, "id" | "createdAt">) => Promise<void>;
+  /**
+   * Rejects with a user-facing message when saving fails. `accessToken` is the signed-in
+   * user's token (creating a bar requires login), or null when login isn't available.
+   */
+  onSubmit: (venue: Omit<Venue, "id" | "createdAt">, accessToken: string | null) => Promise<void>;
   /** Map center when modal opened. */
   initialLat?: number;
   initialLng?: number;
@@ -47,6 +53,9 @@ export function AddVenueModal({
   const [priceRows, setPriceRows] = useState<PriceRow[]>([initialPriceRow()]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const auth = useAuthUser();
+  /** Login is configured and nobody is signed in: show the login card instead of the form. */
+  const needsLogin = auth.configured && !auth.user;
 
   const [locationQuery, setLocationQuery] = useState("");
   const [locationResults, setLocationResults] = useState<NominatimResult[]>([]);
@@ -140,10 +149,11 @@ export function AddVenueModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || needsLogin) return;
     setSaving(true);
     setSaveError(null);
     try {
+      const accessToken = await getAccessToken();
       await onSubmit({
         name: name.trim(),
         address: address.trim(),
@@ -155,7 +165,7 @@ export function AddVenueModal({
         beerPrices: validBeerPrices(),
         hasHappyHour,
         happyHourDetails: hasHappyHour ? happyHourDetails.trim() : undefined,
-      });
+      }, accessToken);
       resetForm();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Erro ao salvar. Tente novamente.");
@@ -211,213 +221,236 @@ export function AddVenueModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-stone-400 mb-1">
-              Nome do bar *
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
-            />
+        {auth.loading ? (
+          <p className="p-4 text-sm text-stone-400">Carregando...</p>
+        ) : needsLogin ? (
+          <div className="p-4">
+            <LoginCard />
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-stone-400 mb-1">
-              Localização
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={locationQuery}
-                onChange={(e) => handleLocationChange(e.target.value)}
-                onFocus={() => locationResults.length > 0 && setLocationOpen(true)}
-                onBlur={() => setTimeout(() => setLocationOpen(false), 200)}
-                placeholder="Buscar endereço..."
-                className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100 placeholder-stone-500"
-              />
-              {locationLoading && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 text-xs">
-                  Buscando...
+        ) : (
+          <form onSubmit={handleSubmit} className="p-4 space-y-4">
+            {auth.user && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-stone-700 bg-stone-900/60 px-3 py-2 text-xs text-stone-400">
+                <span className="min-w-0 truncate">
+                  Conectado como <span className="text-stone-200">{auth.user.email ?? "usuário"}</span>
                 </span>
-              )}
-              {locationOpen && locationResults.length > 0 && (
-                <ul className="absolute top-full left-0 right-0 mt-1 py-1 rounded-lg bg-stone-800 border border-stone-700 shadow-xl z-50 max-h-48 overflow-y-auto">
-                  {locationResults.map((r) => (
-                    <li
-                      key={r.place_id}
-                      role="option"
-                      aria-selected={false}
-                      onClick={() => handleLocationSelect(r)}
-                      className="px-3 py-2 text-sm text-stone-200 hover:bg-stone-700 cursor-pointer border-b border-stone-700/50 last:border-0"
-                    >
-                      <span className="block truncate">{r.display_name}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            {!locationSelected && (
-              <p className="text-xs text-amber-300 mt-2">
-                Selecione um endereço da lista para salvar o bar.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-stone-400 mb-1">
-              Endereço
-            </label>
-            <input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-sm font-medium text-stone-400 mb-1">
-                Bairro
-              </label>
-              <input
-                type="text"
-                value={neighborhood}
-                onChange={(e) => setNeighborhood(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-stone-400 mb-1">
-                Cidade
-              </label>
-              <input
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
-              />
-            </div>
-          </div>
-
-          <div>
-            <p className="block text-sm font-medium text-stone-400 mb-2">
-              Preços de cerveja * (adicione ao menos um)
-            </p>
-            <p className="text-xs text-stone-500 mb-3">
-              Tipo + marca (ex: Brahma, Heineken) + preço. Use &quot;Adicionar cerveja&quot; para mais opções.
-            </p>
-            {priceRows.map((row, index) => (
-              <div key={`price-${index}`} className="flex flex-wrap items-center gap-2 mb-3">
-                <select
-                  value={row.type}
-                  onChange={(e) =>
-                    updatePriceRow(index, { type: e.target.value as BeerType })
-                  }
-                  className="px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100 text-sm w-28"
-                >
-                  {BEER_TYPES.map(({ value, label }) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  value={row.label}
-                  onChange={(e) => updatePriceRow(index, { label: e.target.value })}
-                  placeholder="Marca (ex: Brahma)"
-                  className="flex-1 min-w-[100px] px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100 text-sm placeholder-stone-500"
-                />
-                <div className="flex items-center gap-1">
-                  <span className="text-stone-500 text-sm">R$</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={row.priceBRL || ""}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      updatePriceRow(index, {
-                        priceBRL: !Number.isNaN(v) && v >= 0 ? v : 0,
-                      });
-                    }}
-                    placeholder="0"
-                    className="w-20 px-2 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100 text-sm"
-                  />
-                </div>
                 <button
                   type="button"
-                  onClick={() => removePriceRow(index)}
-                  disabled={priceRows.length <= 1}
-                  className="p-2 rounded text-stone-500 hover:text-stone-300 hover:bg-stone-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                  aria-label="Remover cerveja"
+                  onClick={() => getSupabaseBrowser()?.auth.signOut()}
+                  className="shrink-0 text-amber-400 hover:text-amber-300"
                 >
-                  ✕
+                  Sair
                 </button>
               </div>
-            ))}
-            <button
-              type="button"
-              onClick={addPriceRow}
-              className="text-sm text-amber-400 hover:text-amber-300"
-            >
-              + Adicionar cerveja
-            </button>
-          </div>
+            )}
 
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={hasHappyHour}
-              onChange={(e) => setHasHappyHour(e.target.checked)}
-              className="rounded border-stone-600 bg-stone-800 text-amber-500"
-            />
-            <span className="text-sm text-stone-300">Tem happy hour</span>
-          </label>
-
-          {hasHappyHour && (
             <div>
               <label className="block text-sm font-medium text-stone-400 mb-1">
-                Detalhes do happy hour
+                Nome do bar *
               </label>
               <input
                 type="text"
-                value={happyHourDetails}
-                onChange={(e) => setHappyHourDetails(e.target.value)}
-                placeholder="Ex: Seg–Sex 17h–20h: chope R$ 6"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
                 className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
               />
             </div>
-          )}
 
-          {saveError && (
-            <p role="alert" className="text-sm text-red-300 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">
-              {saveError}
-            </p>
-          )}
+            <div>
+              <label className="block text-sm font-medium text-stone-400 mb-1">
+                Localização
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={locationQuery}
+                  onChange={(e) => handleLocationChange(e.target.value)}
+                  onFocus={() => locationResults.length > 0 && setLocationOpen(true)}
+                  onBlur={() => setTimeout(() => setLocationOpen(false), 200)}
+                  placeholder="Buscar endereço..."
+                  className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100 placeholder-stone-500"
+                />
+                {locationLoading && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 text-xs">
+                    Buscando...
+                  </span>
+                )}
+                {locationOpen && locationResults.length > 0 && (
+                  <ul className="absolute top-full left-0 right-0 mt-1 py-1 rounded-lg bg-stone-800 border border-stone-700 shadow-xl z-50 max-h-48 overflow-y-auto">
+                    {locationResults.map((r) => (
+                      <li
+                        key={r.place_id}
+                        role="option"
+                        aria-selected={false}
+                        onClick={() => handleLocationSelect(r)}
+                        className="px-3 py-2 text-sm text-stone-200 hover:bg-stone-700 cursor-pointer border-b border-stone-700/50 last:border-0"
+                      >
+                        <span className="block truncate">{r.display_name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {!locationSelected && (
+                <p className="text-xs text-amber-300 mt-2">
+                  Selecione um endereço da lista para salvar o bar.
+                </p>
+              )}
+            </div>
 
-          <div className="flex gap-2 pt-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="px-4 py-2 rounded-lg border border-stone-600 text-stone-300 hover:bg-stone-800"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              className="px-4 py-2 rounded-lg bg-amber-500 text-stone-950 font-medium hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? "Salvando..." : "Salvar bar"}
-            </button>
-          </div>
-        </form>
+            <div>
+              <label className="block text-sm font-medium text-stone-400 mb-1">
+                Endereço
+              </label>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-sm font-medium text-stone-400 mb-1">
+                  Bairro
+                </label>
+                <input
+                  type="text"
+                  value={neighborhood}
+                  onChange={(e) => setNeighborhood(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-stone-400 mb-1">
+                  Cidade
+                </label>
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="block text-sm font-medium text-stone-400 mb-2">
+                Preços de cerveja * (adicione ao menos um)
+              </p>
+              <p className="text-xs text-stone-500 mb-3">
+                Tipo + marca (ex: Brahma, Heineken) + preço. Use &quot;Adicionar cerveja&quot; para mais opções.
+              </p>
+              {priceRows.map((row, index) => (
+                <div key={`price-${index}`} className="flex flex-wrap items-center gap-2 mb-3">
+                  <select
+                    value={row.type}
+                    onChange={(e) =>
+                      updatePriceRow(index, { type: e.target.value as BeerType })
+                    }
+                    className="px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100 text-sm w-28"
+                  >
+                    {BEER_TYPES.map(({ value, label }) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={row.label}
+                    onChange={(e) => updatePriceRow(index, { label: e.target.value })}
+                    placeholder="Marca (ex: Brahma)"
+                    className="flex-1 min-w-[100px] px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100 text-sm placeholder-stone-500"
+                  />
+                  <div className="flex items-center gap-1">
+                    <span className="text-stone-500 text-sm">R$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={row.priceBRL || ""}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        updatePriceRow(index, {
+                          priceBRL: !Number.isNaN(v) && v >= 0 ? v : 0,
+                        });
+                      }}
+                      placeholder="0"
+                      className="w-20 px-2 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removePriceRow(index)}
+                    disabled={priceRows.length <= 1}
+                    className="p-2 rounded text-stone-500 hover:text-stone-300 hover:bg-stone-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label="Remover cerveja"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addPriceRow}
+                className="text-sm text-amber-400 hover:text-amber-300"
+              >
+                + Adicionar cerveja
+              </button>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hasHappyHour}
+                onChange={(e) => setHasHappyHour(e.target.checked)}
+                className="rounded border-stone-600 bg-stone-800 text-amber-500"
+              />
+              <span className="text-sm text-stone-300">Tem happy hour</span>
+            </label>
+
+            {hasHappyHour && (
+              <div>
+                <label className="block text-sm font-medium text-stone-400 mb-1">
+                  Detalhes do happy hour
+                </label>
+                <input
+                  type="text"
+                  value={happyHourDetails}
+                  onChange={(e) => setHappyHourDetails(e.target.value)}
+                  placeholder="Ex: Seg–Sex 17h–20h: chope R$ 6"
+                  className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100"
+                />
+              </div>
+            )}
+
+            {saveError && (
+              <p role="alert" className="text-sm text-red-300 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">
+                {saveError}
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="px-4 py-2 rounded-lg border border-stone-600 text-stone-300 hover:bg-stone-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={!canSubmit}
+                className="px-4 py-2 rounded-lg bg-amber-500 text-stone-950 font-medium hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? "Salvando..." : "Salvar bar"}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

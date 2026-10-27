@@ -8,12 +8,13 @@ import type { BeerPrice } from "@/types";
 import {
   buildCreateVenueArgs,
   buildUpdateVenueArgs,
+  flagVenueForReview,
   parseVenueRpcPayload,
   runVenueWrite,
   toRpcPrices,
   type RpcClient,
 } from "./venue-writes";
-import { loadVenuesErrorMessage, type ApiError } from "./api";
+import { loadVenuesErrorMessage, reportErrorMessage, saveErrorMessage, type ApiError } from "./api";
 
 const VENUE_ID = "11111111-2222-4333-8444-555555555555";
 
@@ -87,6 +88,7 @@ test("toRpcPrices maps camelCase prices to table columns", () => {
 test("buildUpdateVenueArgs: prices only leaves happy hour untouched", () => {
   const args = buildUpdateVenueArgs(VENUE_ID, { happyHourDetails: "", beerPrices: PRICES });
   assert.equal(args.p_venue_id, VENUE_ID);
+  assert.equal(args.p_edited_by, null, "anonymous edits record no editor");
   assert.equal(args.p_update_happy_hour, false);
   assert.equal(args.p_replace_prices, true);
   assert.equal((args.p_prices as unknown[]).length, 2);
@@ -103,6 +105,15 @@ test("buildUpdateVenueArgs: happy hour only does not replace prices", () => {
   assert.equal(args.p_happy_hour_details, "17h–19h");
   assert.equal(args.p_replace_prices, false);
   assert.deepEqual(args.p_prices, []);
+});
+
+test("buildUpdateVenueArgs records the signed-in editor", () => {
+  const args = buildUpdateVenueArgs(
+    VENUE_ID,
+    { happyHourDetails: "", beerPrices: PRICES },
+    "99999999-8888-4777-8666-555555555555"
+  );
+  assert.equal(args.p_edited_by, "99999999-8888-4777-8666-555555555555");
 });
 
 test("buildUpdateVenueArgs: turning happy hour off clears the details", () => {
@@ -128,8 +139,10 @@ test("buildCreateVenueArgs passes every column and nulls empty happy hour detail
     hasHappyHour: true,
     happyHourDetails: "",
     beerPrices: PRICES,
+    createdBy: "99999999-8888-4777-8666-555555555555",
   });
   assert.equal(args.p_name, "Bar Novo");
+  assert.equal(args.p_created_by, "99999999-8888-4777-8666-555555555555");
   assert.equal(args.p_lat, -22.01);
   assert.equal(args.p_has_happy_hour, true);
   assert.equal(args.p_happy_hour_details, null);
@@ -147,6 +160,35 @@ test("parseVenueRpcPayload maps the venue and its prices", () => {
     { type: "chope", label: "Brahma", priceBRL: 9.9, volumeMl: 300 },
     { type: "lata", label: "Skol", priceBRL: 6, volumeMl: undefined },
   ]);
+});
+
+test("rowToVenue maps prices_unverified and never exposes author or moderation columns", () => {
+  const venue = parseVenueRpcPayload({
+    venue: {
+      ...VENUE_ROW,
+      user_added: false,
+      source: "osm",
+      prices_unverified: true,
+      needs_review: true,
+      created_by: "99999999-8888-4777-8666-555555555555",
+      last_edited_by: "99999999-8888-4777-8666-555555555555",
+      last_edited_at: "2026-10-02T12:00:00Z",
+    },
+    beer_prices: PRICE_ROWS,
+  });
+  assert.ok(venue);
+  assert.equal(venue.pricesUnverified, true);
+  assert.equal(venue.userAdded, false);
+  assert.equal(venue.fromOsm, true);
+  const serialized = JSON.stringify(venue);
+  assert.ok(!serialized.includes("99999999-8888"));
+  assert.ok(!("needsReview" in venue));
+});
+
+test("rowToVenue: rows from before migration 004 are not unverified", () => {
+  const venue = parseVenueRpcPayload({ venue: { ...VENUE_ROW, user_added: false }, beer_prices: [] });
+  assert.ok(venue);
+  assert.equal(venue.pricesUnverified, false);
 });
 
 test("parseVenueRpcPayload rejects malformed payloads", () => {
@@ -216,4 +258,51 @@ test("loadVenuesErrorMessage never shows raw server text", () => {
   assert.equal(loadVenuesErrorMessage(apiError(500, "Failed to load venues")), generic);
   assert.equal(loadVenuesErrorMessage(apiError(500, "<html>Cloudflare</html>")), generic);
   assert.equal(loadVenuesErrorMessage(new TypeError("Failed to fetch")), generic);
+});
+
+test("flagVenueForReview: true is ok, false is not_found", async () => {
+  const ok = fakeClient({ data: true, error: null });
+  assert.deepEqual(await flagVenueForReview(ok.client, VENUE_ID), { ok: true });
+  assert.deepEqual(ok.calls, [{ fn: "flag_venue_for_review", args: { p_venue_id: VENUE_ID } }]);
+
+  const missing = fakeClient({ data: false, error: null });
+  assert.deepEqual(await flagVenueForReview(missing.client, VENUE_ID), { ok: false, reason: "not_found" });
+});
+
+test("flagVenueForReview: errors and odd payloads are db_error", async (t) => {
+  silenceConsoleError(t);
+  for (const response of [
+    { data: null, error: { code: "PGRST202", message: "not found" } },
+    { data: null, error: null },
+    new TypeError("fetch failed"),
+  ]) {
+    const { client } = fakeClient(response);
+    assert.deepEqual(await flagVenueForReview(client, VENUE_ID), { ok: false, reason: "db_error" });
+  }
+});
+
+test("saveErrorMessage maps 401 and 429 to friendly pt-BR messages", () => {
+  assert.equal(
+    saveErrorMessage(apiError(401, "Authentication required")),
+    "Faça login para adicionar um novo bar."
+  );
+  assert.equal(
+    saveErrorMessage(apiError(429, "Too many requests")),
+    "Muitas alterações em pouco tempo. Aguarde alguns minutos e tente novamente."
+  );
+  assert.match(saveErrorMessage(apiError(403, "User edits are disabled in production")), /temporariamente desativado/);
+  assert.equal(saveErrorMessage(apiError(404, "Venue not found")), "Este bar não existe mais.");
+  assert.equal(
+    saveErrorMessage(apiError(500, "Failed to check rate limit")),
+    "Erro ao salvar. Verifique sua conexão e tente novamente."
+  );
+});
+
+test("reportErrorMessage reuses the save messages for 403/404/429 only", () => {
+  assert.match(reportErrorMessage(apiError(429, "Too many requests")), /Muitas alterações/);
+  assert.match(reportErrorMessage(apiError(403, "disabled")), /temporariamente desativado/);
+  assert.equal(reportErrorMessage(apiError(404, "Venue not found")), "Este bar não existe mais.");
+  const generic = "Não foi possível enviar. Verifique sua conexão e tente novamente.";
+  assert.equal(reportErrorMessage(apiError(400, "Invalid venue id")), generic);
+  assert.equal(reportErrorMessage(new TypeError("Failed to fetch")), generic);
 });

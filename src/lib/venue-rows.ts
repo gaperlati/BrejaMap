@@ -20,6 +20,12 @@ export type VenueRow = {
   created_at: string;
   user_added: boolean;
   source: "user" | "google" | "osm";
+  /** Added by 004_auth_rate_limits_and_moderation.sql (absent on older databases). */
+  prices_unverified?: boolean;
+  needs_review?: boolean;
+  created_by?: string | null;
+  last_edited_by?: string | null;
+  last_edited_at?: string | null;
 };
 
 export type BeerPriceRow = {
@@ -32,6 +38,7 @@ export type BeerPriceRow = {
   created_at: string;
 };
 
+/** Maps a row for the client. Author ids and moderation state are never exposed. */
 export function rowToVenue(row: VenueRow, prices: BeerPriceRow[]): Venue {
   const beerPrices: BeerPrice[] = prices
     .filter((p) => p.venue_id === row.id)
@@ -56,6 +63,7 @@ export function rowToVenue(row: VenueRow, prices: BeerPriceRow[]): Venue {
     photoUrl: row.photo_url ?? undefined,
     createdAt: row.created_at,
     userAdded: row.user_added,
+    pricesUnverified: row.prices_unverified === true,
     fromOsm: row.source === "osm",
     fromGoogle: row.source === "google",
   };

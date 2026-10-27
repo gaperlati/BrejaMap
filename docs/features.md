@@ -71,7 +71,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 - **Fonte de pins no mapa**: o cliente **não** chama mais o Google Places. Ao pan/zoom (idle, zoom ≥ 12) ou ao clicar em “Buscar bares”, o frontend chama **GET /api/venues?bounds=south,west,north,east**. O Next.js consulta o Supabase (tabelas `venues` e `beer_prices`) e devolve um JSON enxuto com os venues na bounding box. Isso elimina a latência e o payload pesado do Places no cliente.
 - **Deduplicação de venues no GET**: quando existem linhas repetidas no banco para o mesmo local (mesmo nome + coordenadas muito próximas), a API responde apenas uma entrada para evitar cards/pins duplicados. A priorização mantém, nessa ordem, venues adicionados por usuário, depois venues com preços e por fim o registro mais recente.
-- **Persistência**: **POST /api/venues** (adicionar bar) e **PATCH /api/venues/[id]** (adicionar/editar preços e happy hour) gravam no Supabase. Se o backend não estiver configurado (503), o app usa apenas estado local (mock + edições em memória). Qualquer **outra falha** (403 com escrita desativada, 400, 500, rede) é mostrada no próprio modal e o modal continua aberto; o app não finge mais que salvou.
+- **Persistência**: **POST /api/venues** (adicionar bar), **PATCH /api/venues/[id]** (adicionar/editar preços e happy hour) e **POST /api/venues/[id]/report** (sinalizar preços) gravam no Supabase. Se o backend não estiver configurado (503), o app usa apenas estado local (mock + edições em memória). Qualquer **outra falha** (401 sem login, 403 com escrita desativada, 429 por rate limit, 400, 500, rede) é mostrada no próprio modal e o modal continua aberto; o app não finge mais que salvou. Mensagens em pt-BR em `saveErrorMessage` (`src/lib/api.ts`): 401 → “Faça login para adicionar um novo bar.”; 429 → “Muitas alterações em pouco tempo. Aguarde alguns minutos e tente novamente.”
 - **Validação no servidor** (`src/lib/venue-server.ts`, compartilhado pelas duas rotas):
   - GET: bounds precisam ser números finitos, ordenados, com no máximo **2°** por lado; resposta limitada a **500** venues.
   - POST: nome de 2–80 caracteres; lat/lng dentro do **estado de SP** (bbox aproximada); textos de endereço truncados em 200 caracteres.
@@ -79,8 +79,15 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
   - PATCH: id precisa ser UUID; tudo é validado antes de acessar o banco; responde 404 se o bar não existe (sem alterar nada); erros do banco retornam 500 (`Failed to update venue` / `Failed to update beer prices`).
   - Mensagens de erro do banco não são devolvidas ao cliente (só logadas no servidor). No GET, qualquer falha do banco (inclusive Supabase fora do ar) responde 500 com `{ error: "Failed to load venues", venues: [] }`, e o mapa mostra uma mensagem amigável em pt-BR (`loadVenuesErrorMessage` em `src/lib/api.ts`).
 - **Escritas atômicas** (`supabase/migrations/003_atomic_venue_writes.sql`, `src/lib/venue-writes.ts`): o PATCH chama a função Postgres `update_venue_and_prices` e o POST chama `create_venue_with_prices` via `supabase.rpc`, em **uma única ida ao banco**. Cada função roda numa transação: atualizar happy hour, apagar os preços antigos e inserir os novos (ou criar o bar e seus preços) acontece por inteiro ou não acontece; um bar nunca fica com preços apagados ou sem preço por falha no meio. As funções só podem ser executadas pela `service_role`. Sem a migração 003 aplicada, as escritas retornam 500 (o log do servidor indica a migração faltante).
-- **Writes (produção)**: por segurança, operações de escrita podem ficar **bloqueadas em produção** até que Auth/RLS do Supabase esteja implementado. Para reabilitar, configure `USER_EDITS_ENABLED=true` no ambiente.
-- **Schema**: `venues` (id, name, address, neighborhood, city, state, lat, lng, has_happy_hour, happy_hour_details, photo_url, created_at, user_added, source, external_id); `beer_prices` (id, venue_id, type, label, price_brl, volume_ml, created_at). Migrações em `supabase/migrations/001_venues_and_beer_prices.sql`, `002_venues_external_id.sql` (coluna `external_id` opcional e única, usada pela importação do OSM) e `003_atomic_venue_writes.sql` (funções de escrita atômica do PATCH/POST).
+- **Writes (produção) — interruptor geral**: em produção, toda escrita (criar bar, editar preços, sinalizar) responde 403 a menos que `USER_EDITS_ENABLED=true` (`writesBlockedResponse` em `src/lib/venue-server.ts`). Voltar a variável para `false` desliga todas as escritas na hora.
+- **Auth e anti-abuso** (`supabase/migrations/004_auth_rate_limits_and_moderation.sql`, `src/lib/write-guards.ts`):
+  - **Criar bar exige login**: o POST exige `Authorization: Bearer <access_token>` válido (verificado com `supabase.auth.getUser`); sem token ou com token inválido/expirado responde **401** `{ error: "Authentication required" }`. O id do usuário vai em `venues.created_by` (`p_created_by` de `create_venue_with_prices`).
+  - **Editar preços não exige login**: o PATCH aceita anônimos. Se vier um token válido, o id do usuário é gravado em `venues.last_edited_by`; token inválido só torna a edição anônima. Toda edição marca `prices_unverified = true` e `last_edited_at`.
+  - **Rate limit no Postgres**: tabela `write_rate_limits` + função atômica `consume_write_rate_limits` (janela fixa; se algum limite estourou, nada é contado). A chave é SHA-256 do IP (primeiro `x-forwarded-for`, depois `x-real-ip`, senão `"unknown"`) com sal do servidor (`RATE_LIMIT_SALT` ou, na falta, `SUPABASE_SERVICE_ROLE_KEY`); o IP cru nunca é gravado. Limites: PATCH 10/10 min por IP e 3/10 min por (IP, bar); POST 5/hora por usuário e 5/hora por IP; report 5/10 min por IP. Estourou → **429** `{ error: "Too many requests" }` com `Retry-After` (segundos). Se o banco não responder, a escrita é recusada (500), nunca liberada sem limite.
+  - **Sinalizar preços**: `POST /api/venues/[id]/report` (sem login, com rate limit) chama `flag_venue_for_review`, que marca `venues.needs_review = true`. Fila de moderação: `select * from venues where needs_review`.
+  - **RLS**: `venues`, `beer_prices` e `write_rate_limits` têm RLS ligado e nenhuma política, e os privilégios de `anon`/`authenticated` foram revogados. A chave anon pública (usada só no login do navegador) não lê nem grava tabelas via PostgREST; a API usa a `service_role`, que ignora RLS. As funções só podem ser executadas pela `service_role`.
+  - Sem a migração 004, POST/PATCH/report respondem 500 (o log indica a migração faltante).
+- **Schema**: `venues` (id, name, address, neighborhood, city, state, lat, lng, has_happy_hour, happy_hour_details, photo_url, created_at, user_added, source, external_id, prices_unverified, needs_review, created_by, last_edited_by, last_edited_at); `beer_prices` (id, venue_id, type, label, price_brl, volume_ml, created_at); `write_rate_limits` (bucket, key_hash, window_started_at, reset_at, hits). A API devolve `pricesUnverified`, mas nunca `created_by`/`last_edited_by`/`needs_review`. Migrações em `supabase/migrations/001_venues_and_beer_prices.sql`, `002_venues_external_id.sql` (coluna `external_id` opcional e única, usada pela importação do OSM), `003_atomic_venue_writes.sql` (funções de escrita atômica do PATCH/POST) e `004_auth_rate_limits_and_moderation.sql` (autoria, `prices_unverified`, `needs_review`, rate limit, report e RLS).
 - **Dados iniciais**: `venues` é populada offline pelo script de importação do OpenStreetMap (seção 3.3); o mapa continua consultando apenas o nosso banco.
 - **Zoom out**: quando o zoom fica **< 12**, os venues carregados da API são removidos da lista (permanecem mock e user-added).
 
@@ -143,20 +150,27 @@ Ao selecionar um bar no mapa ou na lista:
 - **Tags**: quantidade de cervejas servidas ou “Preços não informados”, “Happy hour” (se houver), até 3 preços exibidos como "Marca R$ X" ou "Tipo R$ X" quando não há marca.
 - **Preço mínimo**: “A partir de R$ X,X” ou “—” quando não há preços.
 - **Detalhes do happy hour**: exibidos quando existem (`happyHourDetails`).
-- **Aviso “Preços não verificados”**: quando o bar foi adicionado por usuário (`userAdded === true`).
-- **Aviso “Dados do OpenStreetMap”**: quando o bar veio do OSM (`fromOsm === true`).
-- **Aviso “Dados do Google Maps”**: quando o bar veio do Places (`fromGoogle === true`).
+- **Aviso “Preços não verificados”**: quando o bar foi adicionado por usuário (`userAdded`, “adicionado por um usuário”) ou teve preços/happy hour editados pela comunidade (`pricesUnverified`, vindo de `venues.prices_unverified`, “informados pela comunidade”). Persiste após recarregar a página (antes, para bares do OSM editados, só existia em memória).
+- **Aviso “Dados do OpenStreetMap”**: quando o bar veio do OSM (`fromOsm === true`); sem preços, convida a adicionar; com preços, só credita a localização.
+- **Aviso “Dados do Google Maps”**: quando o bar veio do Places (`fromGoogle === true`), mesmo padrão.
+- **Sinalizar preços incorretos**: link discreto abaixo das ações (só quando o bar tem preços). Chama `POST /api/venues/[id]/report`; ao concluir mostra “Obrigado! Vamos revisar os preços deste bar.”. Erros (429, 403, rede) aparecem logo abaixo (`reportErrorMessage`).
 - **Como chegar**: link que abre Google Maps com rota até o bar (destino = lat,lng).
 - Fechar o sheet: toque fora (overlay escuro).
 - **Ações** (Adicionar/Editar preços quando há callback, Como chegar): sempre em **uma linha** (`whitespace-nowrap`); em telas &lt; `sm` usam `text-xs`, padding menor e, se faltar largura, **scroll horizontal** discreto (scrollbar oculta); a partir de `sm`, `flex-1` divide o espaço com `text-sm`.
 
-**Arquivos**: `src/components/VenueSheet.tsx`.
+**Arquivos**: `src/components/VenueSheet.tsx`, `src/app/api/venues/[id]/report/route.ts`.
 
 ---
 
 ## 7. Adicionar bar
 
 - Acesso pelo botão **“Adicionar bar”** na barra inferior.
+- **Login obrigatório para cadastrar** (quando o login está configurado com `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`): sem sessão, o modal mostra só o card “Entre para cadastrar um novo bar” (“Para evitar spam, pedimos um login rápido antes de adicionar bares. Editar preços em bares existentes não exige login.”), sem citar o provedor de autenticação:
+  - **Continuar com Google** (`signInWithOAuth`, volta para a origem do site). Antes do redirecionamento grava uma flag em `sessionStorage` e, na volta, `page.tsx` reabre o modal.
+  - **Continuar com e-mail**: envia o código (`signInWithOtp`) e mostra o campo do código de 6 dígitos (`verifyOtp`, sem sair da página); o link do mesmo e-mail também funciona.
+  - Erros de login aparecem em pt-BR genérico (nunca o texto cru do provedor).
+  - Logado: o formulário mostra “Conectado como {e-mail}” e o botão **Sair**; ao salvar, o `access_token` da sessão vai em `Authorization: Bearer` (`createVenue(venue, accessToken)`).
+  - Sem as variáveis públicas o card não aparece (o formulário é mostrado) e o servidor responde 401 se o backend estiver configurado.
 - Modal com formulário:
   - Nome do bar * (obrigatório)
   - **Localização**: campo “Buscar endereço” que usa **Nominatim (OpenStreetMap)** para geocodificar; ao selecionar um resultado, preenche coordenadas (lat/lng) e os campos Endereço, Bairro (suburb/neighbourhood/quarter do OSM), Cidade e Estado. O botão **Salvar bar** fica desabilitado até um endereço da lista ser selecionado (não há fallback para o centro do mapa e não há campos Lat/Lng manuais). Bairro/cidade ficam vazios quando o OSM não informa (sem mais o padrão "São Paulo").
@@ -165,7 +179,9 @@ Ao selecionar um bar no mapa ou na lista:
   - Checkbox “Tem happy hour” + campo “Detalhes do happy hour”
 - Ao salvar: o botão mostra "Salvando..."; o bar é criado via POST e adicionado à lista; preços aparecem como “não verificados” no detalhe. Se falhar, o erro aparece no modal (ex.: "Adicionar e editar bares está temporariamente desativado" quando a escrita está bloqueada em produção) e o formulário é mantido. O modal "Adicionar preços" segue o mesmo fluxo.
 
-**Arquivos**: `src/components/AddVenueModal.tsx`, `src/components/AddPricesModal.tsx`, `src/app/page.tsx`, `src/lib/api.ts` (`saveErrorMessage`), `src/lib/geocode.ts`.
+- **Adicionar/editar preços** (`AddPricesModal`): não exige login; se houver sessão, o token é enviado para registrar o autor. O bar passa a mostrar “Preços não verificados”.
+
+**Arquivos**: `src/components/AddVenueModal.tsx`, `src/components/LoginCard.tsx`, `src/components/AddPricesModal.tsx`, `src/app/page.tsx`, `src/lib/api.ts` (`saveErrorMessage`), `src/lib/supabase-browser.ts`, `src/lib/use-auth-user.ts`, `src/lib/geocode.ts`.
 
 ---
 
@@ -191,7 +207,7 @@ Ao selecionar um bar no mapa ou na lista:
 
 ## Modelo de dados (resumo)
 
-- **Venue**: id, name, address, neighborhood, city, state, lat, lng, beerPrices (pode ser [] para lugares do Google), hasHappyHour, happyHourDetails?, photoUrl?, createdAt, userAdded?, fromOsm?, fromGoogle?.
+- **Venue**: id, name, address, neighborhood, city, state, lat, lng, beerPrices (pode ser [] para lugares do Google), hasHappyHour, happyHourDetails?, photoUrl?, createdAt, userAdded?, pricesUnverified?, fromOsm?, fromGoogle?.
 - **BeerPrice**: type (BeerType), label (marca/nome, ex.: "Brahma" ou "Chope" quando genérico), priceBRL, volumeMl?.
 - **BeerType**: `"chope"` | `"long_neck"` | `"lata"` | `"garrafa"` | `"outro"`.
 - **SortOption**: `"price_asc"` | `"price_desc"` | `"distance"` | `"name"`.

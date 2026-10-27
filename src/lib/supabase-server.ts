@@ -19,6 +19,15 @@ export const supabase =
     ? createClient(url, serviceRoleKey, { auth: { persistSession: false } })
     : null;
 
+/** venues columns that have a database default (nullable or `default false`). */
+type VenueDefaultedColumns =
+  | "external_id"
+  | "prices_unverified"
+  | "needs_review"
+  | "created_by"
+  | "last_edited_by"
+  | "last_edited_at";
+
 export type Database = {
   public: {
     Tables: {
@@ -38,11 +47,17 @@ export type Database = {
           created_at: string;
           user_added: boolean;
           source: "user" | "google" | "osm";
+          external_id: string | null;
+          prices_unverified: boolean;
+          needs_review: boolean;
+          created_by: string | null;
+          last_edited_by: string | null;
+          last_edited_at: string | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["venues"]["Row"], "id" | "created_at"> & {
+        Insert: Omit<Database["public"]["Tables"]["venues"]["Row"], "id" | "created_at" | VenueDefaultedColumns> & {
           id?: string;
           created_at?: string;
-        };
+        } & Partial<Pick<Database["public"]["Tables"]["venues"]["Row"], VenueDefaultedColumns>>;
         Update: Partial<Database["public"]["Tables"]["venues"]["Insert"]>;
       };
       beer_prices: {
