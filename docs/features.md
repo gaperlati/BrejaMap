@@ -8,7 +8,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 **BrejaMap** é um mapa de preços de cerveja para o estado de São Paulo. O usuário encontra bares com os melhores preços, filtra por tipo de bebida, bairro e happy hour, e alterna entre vista de mapa e lista.
 
-- **Stack**: Next.js 14, React 18, TypeScript, Tailwind CSS, Google Maps JavaScript API. **Backend**: Supabase (Postgres) para venues e preços.
+- **Stack**: Next.js 15 (15.5.x), React 19 (19.2.x), TypeScript, Tailwind CSS, Google Maps JavaScript API. **Backend**: Supabase (Postgres) para venues e preços.
 - **Dados**: o mapa e a lista de bares vêm do **nosso backend** (GET /api/venues por bounds). Não há mais chamadas ao Google Places no cliente; a latência e o payload são controlados pelo nosso banco. Mock inicial em memória quando o backend não está configurado.
 
 ---

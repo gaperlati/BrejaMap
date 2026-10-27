@@ -4,7 +4,7 @@ Pasta de documentação do projeto. Mantida atualizada a cada nova tarefa ou fun
 
 ## Requisitos e execução local
 
-- **Node.js**: o projeto exige **Node 18.17+** (recomendado **Node 20**). Com Node 12 o `npm install` falha e o comando `next` não é encontrado.
+- **Node.js**: o projeto exige **Node 18.18+** (exigência do Next.js 15) (recomendado **Node 20**). Com Node 12 o `npm install` falha e o comando `next` não é encontrado.
 - **Instalar dependências**: `npm install` (após usar Node 18+ ou 20).
 - **Desenvolvimento**: `npm run dev` → http://localhost:3000
 - **Build para produção**: `npm run build` e depois `npm run start`

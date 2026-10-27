@@ -17,9 +17,9 @@ import {
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   const blocked = writesBlockedResponse();
   if (blocked) return blocked;
