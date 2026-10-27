@@ -41,6 +41,7 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 
 - [ ] Teste manual completo: adicionar bar, editar preços, busca, filtros, empty state em mobile e desktop
 - [x] Build de produção: `npm run build` sem erros críticos; verificar console no build de produção
+- [x] Atualizar Next.js 14 → 15 (15.5.x, com as correções de segurança) e React 18 → 19; `params` das rotas dinâmicas agora é assíncrono (`await params` em `PATCH /api/venues/[id]`)
 
 ---
 
