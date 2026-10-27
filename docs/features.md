@@ -79,8 +79,8 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
   - POST: se os preços falharem ao gravar, o bar recém-criado é apagado (não fica bar sem preço).
   - Mensagens de erro do banco não são devolvidas ao cliente (só logadas no servidor).
 - **Writes (produção)**: por segurança, operações de escrita podem ficar **bloqueadas em produção** até que Auth/RLS do Supabase esteja implementado. Para reabilitar, configure `USER_EDITS_ENABLED=true` no ambiente.
-- **Schema**: `venues` (id, name, address, neighborhood, city, state, lat, lng, has_happy_hour, happy_hour_details, photo_url, created_at, user_added, source); `beer_prices` (id, venue_id, type, label, price_brl, volume_ml, created_at). Migração em `supabase/migrations/001_venues_and_beer_prices.sql`.
-- **Sincronização futura**: workers ou Edge Functions podem popular/atualizar `venues` a partir do Google Places (ou outras fontes) de forma assíncrona; o mapa continua consultando apenas o nosso banco.
+- **Schema**: `venues` (id, name, address, neighborhood, city, state, lat, lng, has_happy_hour, happy_hour_details, photo_url, created_at, user_added, source, external_id); `beer_prices` (id, venue_id, type, label, price_brl, volume_ml, created_at). Migrações em `supabase/migrations/001_venues_and_beer_prices.sql` e `002_venues_external_id.sql` (coluna `external_id` opcional e única, usada pela importação do OSM).
+- **Dados iniciais**: `venues` é populada offline pelo script de importação do OpenStreetMap (seção 3.3); o mapa continua consultando apenas o nosso banco.
 - **Zoom out**: quando o zoom fica **< 12**, os venues carregados da API são removidos da lista (permanecem mock e user-added).
 
 ---
@@ -92,8 +92,23 @@ Ao publicar o app, o Supabase começa vazio. Opções para o usuário não ficar
 1. **Manter mock em produção** (comportamento atual): o app inicia com bares de exemplo em memória (`MOCK_VENUES`). Ao clicar em "Buscar bares", a API devolve vazia e esses bares continuam visíveis. Funciona, mas os dados são placeholder.
 2. **Rodar o seed no deploy**: após criar o projeto no Supabase e rodar a migração, executar `supabase/seed.sql` no SQL Editor. Os mesmos bares de exemplo passam a existir no banco; "Buscar bares" em São Paulo/Campinas já retorna dados reais.
 3. **Empty state amigável**: quando não há nenhum bar na região (lista vazia sem filtros), a lista exibe "Nenhum bar nesta região ainda. Seja o primeiro a adicionar!" e botão **Adicionar bar**, convidando o usuário a contribuir.
-4. **Fallback Overpass (futuro)**: o backend pode, quando o Supabase retornar 0 venues para um bounds, chamar a API Overpass (OpenStreetMap) e devolver bares da região sem preços — o mapa sempre mostra algo.
-5. **Google Places como fallback**: mesma ideia do Overpass, com custo de API e necessidade de ativar Places API no Google Cloud.
+4. **Importação do OpenStreetMap (estratégia escolhida)**: um operador roda o script `npm run import:osm` (seção 3.3) por cidade, começando por São Carlos. Ele grava apenas a localização dos bares, sem preços; a comunidade adiciona os preços depois. Não há fallback em tempo de requisição (o backend não chama Overpass nem Google Places) e não há scraping de Google Places/iFood.
+
+---
+
+## 3.3. Importação de bares do OpenStreetMap (script do operador)
+
+- **O que faz**: consulta o Overpass uma vez por execução para `amenity=bar|pub` (nós, ways e relações; ways/relações usam o centro) dentro de uma bbox e grava em `venues` com `source='osm'`, `user_added=false`, sem preços. Na UI, esses bares aparecem com “Preços não informados” e o aviso “Dados do OpenStreetMap”.
+- **Escopo**: `--preset sao-carlos` (padrão) ou `--bbox sul,oeste,norte,leste`. A bbox é validada antes de qualquer requisição: números finitos, ordenados, dentro de SP e com no máximo 0,5° por lado.
+- **Mapeamento**: nome de `name`/`name:pt` (lugares sem nome são ignorados); endereço de `addr:street` + `addr:housenumber`; bairro de `addr:suburb`/`addr:neighbourhood`/`addr:quarter`; cidade de `addr:city`/`addr:municipality`, com fallback para a cidade do preset ou `--city` (vazia em bbox genérica). Coordenadas fora da bbox/SP ou estado diferente de SP são descartados.
+- **Dry-run por padrão**: sem `--write` nada é gravado e o banco não é acessado. `--write` exige escopo explícito, `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` (validados antes da rede; a chave nunca é exibida) e a migração `002_venues_external_id.sql`.
+- **Idempotência**: identidade estável `external_id` (`osm-node-123` ≠ `osm-way-123`) com índice único; a gravação é `INSERT ... ON CONFLICT (external_id) DO NOTHING`. Repetir ou rodar em paralelo não duplica, e bares já existentes nunca são alterados (preços, happy hour e edições ficam preservados). `beer_prices` nunca é tocada.
+- **Limites do Overpass**: uma requisição com timeout; 429/502/503/504 são repetidos no máximo `--max-retries` vezes (padrão 1), respeitando `Retry-After`.
+- **Segurança do modo**: combinar `--dry-run` e `--write` é rejeitado antes da rede. A deduplicação usa `external_id`; bares cadastrados manualmente sem esse identificador podem gerar outra linha e precisam de revisão.
+- **Atribuição**: dados © colaboradores do OpenStreetMap (ODbL).
+- Comandos completos no [README](../README.md#importar-bares-do-openstreetmap-operador).
+
+**Arquivos**: `scripts/import-osm.ts`, `scripts/lib/osm-import.ts`, `scripts/osm-import.test.ts`, `src/lib/overpass.ts`, `supabase/migrations/002_venues_external_id.sql`.
 
 ---
 
