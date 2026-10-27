@@ -16,6 +16,7 @@ import {
   MAX_BOUNDS_SPAN_DEG,
   MAX_VENUES_PER_REQUEST,
 } from "@/lib/venue-server";
+import { buildCreateVenueArgs, runVenueWrite } from "@/lib/venue-writes";
 
 function venueDedupKey(venue: Venue): string {
   const normalizedName = venue.name.trim().toLowerCase();
@@ -79,7 +80,7 @@ export async function GET(request: NextRequest) {
   if (venuesError) {
     console.error("Supabase venues error:", venuesError);
     return NextResponse.json(
-      { error: venuesError.message, venues: [] },
+      { error: "Failed to load venues", venues: [] },
       { status: 500 }
     );
   }
@@ -97,7 +98,7 @@ export async function GET(request: NextRequest) {
   if (pricesError) {
     console.error("Supabase beer_prices error:", pricesError);
     return NextResponse.json(
-      { error: pricesError.message, venues: [] },
+      { error: "Failed to load venues", venues: [] },
       { status: 500 }
     );
   }
@@ -172,9 +173,11 @@ export async function POST(request: NextRequest) {
   const hasHappyHour = body.hasHappyHour === true;
   const happyHourDetails = cleanString(body.happyHourDetails, MAX_HAPPY_HOUR_DETAILS_LEN);
 
-  const { data: venueRow, error: insertVenueError } = await supabase
-    .from("venues")
-    .insert({
+  // Venue and prices are inserted in one transaction: no price-less venue is left behind.
+  const result = await runVenueWrite(
+    supabase,
+    "create_venue_with_prices",
+    buildCreateVenueArgs({
       name,
       address: cleanString(body.address, MAX_ADDRESS_FIELD_LEN) || "Endereço não informado",
       neighborhood: cleanString(body.neighborhood, MAX_ADDRESS_FIELD_LEN),
@@ -182,49 +185,15 @@ export async function POST(request: NextRequest) {
       state: cleanString(body.state, MAX_ADDRESS_FIELD_LEN) || "SP",
       lat,
       lng,
-      has_happy_hour: hasHappyHour,
-      happy_hour_details: hasHappyHour && happyHourDetails ? happyHourDetails : null,
-      user_added: true,
-      source: "user",
+      hasHappyHour,
+      happyHourDetails,
+      beerPrices,
     })
-    .select("*")
-    .single();
-
-  if (insertVenueError || !venueRow) {
-    console.error("Supabase insert venue error:", insertVenueError);
-    return NextResponse.json(
-      { error: "Failed to create venue" },
-      { status: 500 }
-    );
-  }
-
-  const venueId = (venueRow as VenueRow).id;
-  const { data: priceRows, error: insertPricesError } = await supabase
-    .from("beer_prices")
-    .insert(
-      beerPrices.map((p) => ({
-        venue_id: venueId,
-        type: p.type,
-        label: p.label,
-        price_brl: p.priceBRL,
-        volume_ml: p.volumeMl ?? null,
-      }))
-    )
-    .select("*");
-
-  if (insertPricesError) {
-    // Don't leave a price-less venue behind when the prices failed to save.
-    console.error("Supabase insert beer_prices error:", insertPricesError);
-    await supabase.from("venues").delete().eq("id", venueId);
-    return NextResponse.json(
-      { error: "Failed to save beer prices" },
-      { status: 500 }
-    );
-  }
-
-  const venue = rowToVenue(
-    venueRow as VenueRow,
-    (priceRows ?? []) as BeerPriceRow[]
   );
-  return NextResponse.json({ venue }, { status: 201 });
+
+  if (!result.ok) {
+    return NextResponse.json({ error: "Failed to create venue" }, { status: 500 });
+  }
+
+  return NextResponse.json({ venue: result.venue }, { status: 201 });
 }

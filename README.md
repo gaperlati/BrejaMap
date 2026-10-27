@@ -7,7 +7,7 @@ Mapa de preços de cerveja para o estado de São Paulo, com foco no interior (o 
 1. **Variáveis de ambiente**
    - Copie `.env.example` para `.env.local` (lá estão todas as variáveis, com comentários). No Vercel, defina as mesmas em Project Settings → Environment Variables ou use `vercel env pull .env.local`.
    - **Mapa**: em [Google Cloud Console](https://console.cloud.google.com/apis/credentials), crie uma chave e ative **Maps JavaScript API**. Defina `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
-   - **Backend (bares no mapa)**: crie um projeto em [Supabase](https://supabase.com), em Settings → API copie URL e **service_role** key. Defina `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`. Rode o SQL em `supabase/migrations/001_venues_and_beer_prices.sql` no SQL Editor do Supabase.
+   - **Backend (bares no mapa)**: crie um projeto em [Supabase](https://supabase.com), em Settings → API copie URL e **service_role** key. Defina `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`. Rode, em ordem, os SQLs de `supabase/migrations/` no SQL Editor do Supabase: `001_venues_and_beer_prices.sql` (tabelas), `002_venues_external_id.sql` (coluna `external_id`, usada pela importação do OSM) e `003_atomic_venue_writes.sql` (funções `update_venue_and_prices` e `create_venue_with_prices`, que gravam bar + preços numa única transação; sem ela, adicionar bar e editar preços retornam 500). Todos podem ser rodados mais de uma vez.
 
 **Para publicar com dados iniciais**: depois da migração, rode também `supabase/seed.sql` no SQL Editor. Isso insere os bares de exemplo (São Paulo, Campinas e um template em Av. Faria Lima, 949). Sem o seed, o mapa começa com os bares mock em memória até a primeira busca; com o seed, "Buscar bares" já devolve dados reais do banco.
 

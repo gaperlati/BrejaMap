@@ -30,7 +30,9 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 - [ ] Documentar processo de deploy: rodar migração + seed no Supabase (dashboard ou CI/CD) para produção ter dados iniciais
 - [x] Verificar variáveis de ambiente documentadas (ver `.env.example`): `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (README e plataforma de deploy)
 - [x] Script offline de importação de bares do OpenStreetMap (`npm run import:osm`, só localização, sem preços; dry-run por padrão) — substitui a ideia de fallback Overpass em tempo de requisição; ver [features.md](./features.md) seção 3.3
-- [ ] Rodar a migração `002_venues_external_id.sql` e a importação de São Carlos (`--preset sao-carlos --write`) em produção, após revisão
+- [x] Rodar a migração `002_venues_external_id.sql` e a importação de São Carlos (`--preset sao-carlos --write`) em produção, após revisão
+- [x] Escritas atômicas de bar + preços (`003_atomic_venue_writes.sql`): PATCH e POST usam funções Postgres transacionais via RPC; GET não expõe mais mensagens de erro do banco; ver [features.md](./features.md) seção 3.1
+- [ ] Rodar a migração `003_atomic_venue_writes.sql` em produção, após revisão (antes de liberar `USER_EDITS_ENABLED=true`)
 
 ### Polimento e robustez
 
