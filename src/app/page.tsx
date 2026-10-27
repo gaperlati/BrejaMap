@@ -8,6 +8,7 @@ import {
   loadVenuesErrorMessage,
   createVenue,
   updateVenuePrices,
+  reportVenuePrices,
   saveErrorMessage,
   type ApiError,
   type VenueFromAPI,
@@ -23,6 +24,8 @@ import { FilterChips } from "@/components/FilterChips";
 import { VenueSheet } from "@/components/VenueSheet";
 import { attachMapHandle, type MapHandle } from "@/lib/mapHandle";
 import { MapLoadingPlaceholder } from "@/components/MapLoadingPlaceholder";
+import { REOPEN_ADD_VENUE_KEY } from "@/components/LoginCard";
+import { getAccessToken } from "@/lib/supabase-browser";
 
 const Map = dynamic(() => import("@/components/Map").then((m) => m.Map), {
   ssr: false,
@@ -326,6 +329,18 @@ export default function Home() {
     );
   }, []);
 
+  // Back from the Google login redirect started in "Adicionar bar": reopen the modal.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(REOPEN_ADD_VENUE_KEY)) {
+        sessionStorage.removeItem(REOPEN_ADD_VENUE_KEY);
+        setAddModalOpen(true);
+      }
+    } catch {
+      // sessionStorage unavailable: nothing to reopen.
+    }
+  }, []);
+
   // Clear auto-load timeout on unmount
   useEffect(() => {
     return () => {
@@ -454,7 +469,10 @@ export default function Home() {
    * demo without Supabase) do we keep the change in memory; any other failure is thrown as a
    * user-facing message so the modal can show it instead of pretending the save worked.
    */
-  const handleAddVenue = useCallback(async (venue: Omit<Venue, "id" | "createdAt">) => {
+  const handleAddVenue = useCallback(async (
+    venue: Omit<Venue, "id" | "createdAt">,
+    accessToken: string | null
+  ) => {
     let saved: Venue;
     try {
       saved = apiVenueToVenue(
@@ -469,7 +487,7 @@ export default function Home() {
           beerPrices: venue.beerPrices,
           hasHappyHour: venue.hasHappyHour,
           happyHourDetails: venue.happyHourDetails,
-        })
+        }, accessToken)
       );
     } catch (e) {
       if ((e as ApiError).status !== 503) throw new Error(saveErrorMessage(e));
@@ -492,7 +510,7 @@ export default function Home() {
           beerPrices: updatedVenue.beerPrices,
           hasHappyHour: updatedVenue.hasHappyHour,
           happyHourDetails: updatedVenue.happyHourDetails,
-        })
+        }, await getAccessToken())
       );
     } catch (e) {
       if ((e as ApiError).status !== 503) throw new Error(saveErrorMessage(e));
@@ -649,6 +667,7 @@ export default function Home() {
           beerTypeLabels={BEER_TYPE_LABELS}
           getMinPrice={getMinBeerPrice}
           onAddPrices={(v) => setVenueToEditPrices(v)}
+          onReportPrices={(v) => reportVenuePrices(v.id)}
         />
       )}
 

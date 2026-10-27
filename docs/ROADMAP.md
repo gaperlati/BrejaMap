@@ -32,7 +32,9 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 - [x] Script offline de importação de bares do OpenStreetMap (`npm run import:osm`, só localização, sem preços; dry-run por padrão) — substitui a ideia de fallback Overpass em tempo de requisição; ver [features.md](./features.md) seção 3.3
 - [x] Rodar a migração `002_venues_external_id.sql` e a importação de São Carlos (`--preset sao-carlos --write`) em produção, após revisão
 - [x] Escritas atômicas de bar + preços (`003_atomic_venue_writes.sql`): PATCH e POST usam funções Postgres transacionais via RPC; GET não expõe mais mensagens de erro do banco; ver [features.md](./features.md) seção 3.1
-- [ ] Rodar a migração `003_atomic_venue_writes.sql` em produção, após revisão (antes de liberar `USER_EDITS_ENABLED=true`)
+- [x] Rodar a migração `003_atomic_venue_writes.sql` em produção, após revisão
+- [x] Auth + anti-abuso para reabilitar escritas (`004_auth_rate_limits_and_moderation.sql`): login (Google ou e-mail com código/link) obrigatório só para cadastrar bar; edição de preços anônima com rate limit por IP (hash) e por (IP, bar); preços editados pela comunidade ficam “não verificados”; botão “Sinalizar preços incorretos” (`needs_review`); RLS em todas as tabelas; ver [features.md](./features.md) seções 3.1, 6 e 7
+- [ ] Rodar a migração `004_auth_rate_limits_and_moderation.sql` em produção, configurar login (Google + template de e-mail com código) e as variáveis `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`; só então definir `USER_EDITS_ENABLED=true`
 
 ### Polimento e robustez
 
@@ -79,7 +81,8 @@ Backlog de features priorizadas com base em [MGB_FEATURES_AND_BRAZIL.md](../MGB_
 
 ### Depois (auth e engajamento)
 
-- **Minha conta + Favoritos**: Autenticação (Supabase Auth), tabela `favorites` ou similar, tela "Minha conta" com lista de favoritos. Exige RLS no Supabase e fluxo de login.
+- **Minha conta + Favoritos**: tabela `favorites` ou similar, tela "Minha conta" com lista de favoritos. Login (Supabase Auth) e RLS já existem desde a migração 004; falta a tela e as políticas da nova tabela.
+- **Moderação**: tela/admin para revisar bares com `needs_review` (hoje a fila é consultada direto no banco).
 - **Avaliação (rating)**: Nota do bar quando houver dados (comunidade ou parceiros). Schema: tabela `ratings` ou coluna agregada; exibir no sheet e opcionalmente filtrar/ordenar.
 - **Eventos / música ao vivo**: Fase 2, exige modelo de dados (tabela `events`?) e possível integração com estabelecimentos.
 - **Outras categorias**: Coquetel/caipirinha, vinho. Pode ser novos tipos em `beer_prices` ou categoria separada no venue.

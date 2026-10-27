@@ -21,8 +21,10 @@ export interface Venue {
   happyHourDetails?: string;
   photoUrl?: string;
   createdAt: string;
-  /** Preços adicionados por usuário – exibir aviso */
+  /** Bar cadastrado por usuário – exibir aviso de preços não verificados */
   userAdded?: boolean;
+  /** Preços ou happy hour editados pela comunidade – exibir aviso de preços não verificados */
+  pricesUnverified?: boolean;
   /** Veio do OpenStreetMap – sem preços até alguém adicionar */
   fromOsm?: boolean;
   /** Veio do Google Places – sem preços até alguém adicionar */

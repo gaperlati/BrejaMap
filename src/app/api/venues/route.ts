@@ -10,6 +10,8 @@ import {
   cleanString,
   isInsideSpState,
   writesBlockedResponse,
+  authRequiredResponse,
+  rateLimitedResponse,
   MAX_NAME_LEN,
   MAX_ADDRESS_FIELD_LEN,
   MAX_HAPPY_HOUR_DETAILS_LEN,
@@ -17,6 +19,12 @@ import {
   MAX_VENUES_PER_REQUEST,
 } from "@/lib/venue-server";
 import { buildCreateVenueArgs, runVenueWrite } from "@/lib/venue-writes";
+import {
+  authenticateRequest,
+  clientIp,
+  createRateLimitChecks,
+  rateLimitSalt,
+} from "@/lib/write-guards";
 
 function venueDedupKey(venue: Venue): string {
   const normalizedName = venue.name.trim().toLowerCase();
@@ -119,6 +127,8 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/venues - Create a new venue (e.g. from "Adicionar bar").
+ * Requires a signed-in user (`Authorization: Bearer <access_token>`, else 401) and is
+ * rate-limited per user and per IP (429).
  */
 export async function POST(request: NextRequest) {
   const blocked = writesBlockedResponse();
@@ -130,6 +140,9 @@ export async function POST(request: NextRequest) {
       { status: 503 }
     );
   }
+
+  const user = await authenticateRequest(supabase, request.headers.get("authorization"));
+  if (!user) return authRequiredResponse();
 
   let body: Record<string, unknown>;
   try {
@@ -173,6 +186,13 @@ export async function POST(request: NextRequest) {
   const hasHappyHour = body.hasHappyHour === true;
   const happyHourDetails = cleanString(body.happyHourDetails, MAX_HAPPY_HOUR_DETAILS_LEN);
 
+  // Counted only once the request is valid, right before touching the venue tables.
+  const limited = await rateLimitedResponse(
+    supabase,
+    createRateLimitChecks(clientIp(request.headers), user.id, rateLimitSalt())
+  );
+  if (limited) return limited;
+
   // Venue and prices are inserted in one transaction: no price-less venue is left behind.
   const result = await runVenueWrite(
     supabase,
@@ -188,6 +208,7 @@ export async function POST(request: NextRequest) {
       hasHappyHour,
       happyHourDetails,
       beerPrices,
+      createdBy: user.id,
     })
   );
 

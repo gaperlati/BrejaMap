@@ -6,12 +6,21 @@ import {
   cleanString,
   isUuid,
   writesBlockedResponse,
+  rateLimitedResponse,
   MAX_HAPPY_HOUR_DETAILS_LEN,
 } from "@/lib/venue-server";
 import { buildUpdateVenueArgs, runVenueWrite } from "@/lib/venue-writes";
+import {
+  authenticateRequest,
+  clientIp,
+  rateLimitSalt,
+  updateRateLimitChecks,
+} from "@/lib/write-guards";
 
 /**
  * PATCH /api/venues/[id] - Update venue (e.g. add/edit beer prices, happy hour).
+ * Login is optional: a valid Bearer token only records who edited. Rate-limited per IP and per
+ * (IP, venue) (429); the venue's prices are marked unverified.
  */
 export async function PATCH(
   request: NextRequest,
@@ -58,16 +67,30 @@ export async function PATCH(
     );
   }
 
+  const limited = await rateLimitedResponse(
+    supabase,
+    updateRateLimitChecks(clientIp(request.headers), id, rateLimitSalt())
+  );
+  if (limited) return limited;
+
+  // An invalid or expired token is not an error here: the edit is simply anonymous.
+  const authorization = request.headers.get("authorization");
+  const user = authorization ? await authenticateRequest(supabase, authorization) : null;
+
   // Everything is validated above; one atomic call updates happy hour and replaces prices,
   // and changes nothing (404) when the venue does not exist.
   const result = await runVenueWrite(
     supabase,
     "update_venue_and_prices",
-    buildUpdateVenueArgs(id, {
-      hasHappyHour: typeof body.hasHappyHour === "boolean" ? body.hasHappyHour : undefined,
-      happyHourDetails: cleanString(body.happyHourDetails, MAX_HAPPY_HOUR_DETAILS_LEN),
-      beerPrices,
-    })
+    buildUpdateVenueArgs(
+      id,
+      {
+        hasHappyHour: typeof body.hasHappyHour === "boolean" ? body.hasHappyHour : undefined,
+        happyHourDetails: cleanString(body.happyHourDetails, MAX_HAPPY_HOUR_DETAILS_LEN),
+        beerPrices,
+      },
+      user?.id ?? null
+    )
   );
 
   if (!result.ok) {

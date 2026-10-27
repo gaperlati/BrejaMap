@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import type { Venue, BeerType } from "@/types";
+import { reportErrorMessage } from "@/lib/api";
 
 interface VenueSheetProps {
   venue: Venue | null;
@@ -8,6 +10,53 @@ interface VenueSheetProps {
   beerTypeLabels: Record<BeerType, string>;
   getMinPrice: (v: Venue) => number;
   onAddPrices?: (venue: Venue) => void;
+  /** Flags the venue's prices as wrong; rejects on failure. */
+  onReportPrices?: (venue: Venue) => Promise<void>;
+}
+
+/** "Sinalizar preços incorretos": one report per opened venue, then a thank-you note. */
+function ReportPricesButton({ venue, onReport }: { venue: Venue; onReport: (venue: Venue) => Promise<void> }) {
+  const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  if (status === "sent") {
+    return (
+      <p role="status" className="mt-4 text-sm text-emerald-300">
+        Obrigado! Vamos revisar os preços deste bar.
+      </p>
+    );
+  }
+
+  const handleClick = async () => {
+    setStatus("sending");
+    setError(null);
+    try {
+      await onReport(venue);
+      setStatus("sent");
+    } catch (e) {
+      setError(reportErrorMessage(e));
+      setStatus("idle");
+    }
+  };
+
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={status === "sending"}
+        className="text-xs text-stone-400 underline underline-offset-2 hover:text-stone-200 disabled:opacity-60"
+      >
+        <span aria-hidden>🚩 </span>
+        {status === "sending" ? "Enviando..." : "Sinalizar preços incorretos"}
+      </button>
+      {error && (
+        <p role="alert" className="mt-1 text-xs text-red-300">
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function VenueSheet({
@@ -16,6 +65,7 @@ export function VenueSheet({
   beerTypeLabels,
   getMinPrice,
   onAddPrices,
+  onReportPrices,
 }: VenueSheetProps) {
   if (!venue) return null;
 
@@ -42,21 +92,27 @@ export function VenueSheet({
           <div className="w-12 h-1 rounded-full bg-stone-600" aria-hidden />
         </div>
 
-        {venue.userAdded && (
+        {(venue.userAdded || venue.pricesUnverified) && (
           <div className="mx-4 mb-3 py-2.5 px-3 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-200 text-sm">
-            Preços não verificados (adicionado por um usuário)
+            {venue.userAdded
+              ? "Preços não verificados (adicionado por um usuário)"
+              : "Preços não verificados (informados pela comunidade)"}
           </div>
         )}
 
         {venue.fromOsm && (
           <div className="mx-4 mb-3 py-2.5 px-3 rounded-lg bg-sky-500/20 border border-sky-500/40 text-sky-200 text-sm">
-            Dados do OpenStreetMap. Preços não informados – adicione se souber.
+            {venue.beerPrices.length === 0
+              ? "Dados do OpenStreetMap. Preços não informados – adicione se souber."
+              : "Localização: dados do OpenStreetMap."}
           </div>
         )}
 
         {venue.fromGoogle && (
           <div className="mx-4 mb-3 py-2.5 px-3 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 text-sm">
-            Dados do Google Maps. Preços não informados – adicione se souber.
+            {venue.beerPrices.length === 0
+              ? "Dados do Google Maps. Preços não informados – adicione se souber."
+              : "Localização: dados do Google Maps."}
           </div>
         )}
 
@@ -125,6 +181,10 @@ export function VenueSheet({
               Como chegar
             </a>
           </div>
+
+          {onReportPrices && venue.beerPrices.length > 0 && (
+            <ReportPricesButton key={venue.id} venue={venue} onReport={onReportPrices} />
+          )}
         </div>
       </div>
     </>
