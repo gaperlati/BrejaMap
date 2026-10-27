@@ -138,6 +138,7 @@ export function Map({
   }, [isLoaded, loadError, apiKey]);
 
   const onLoad = useCallback((mapInstance: google.maps.Map) => {
+    lastReportedRef.current = "";
     setMap(mapInstance);
   }, []);
 
