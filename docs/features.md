@@ -37,7 +37,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 - **Barra inferior (Mapa / Adicionar bar)**: `viewportFit: "cover"` no layout para `env(safe-area-inset-bottom)` funcionar no iOS; classe `.safe-area-pb` em `globals.css` com `padding-bottom: max(0.75rem, env(...))`; shell da página usa `h-dvh` em vez de `100vh` para acompanhar a barra dinâmica do Safari.
 
-**Arquivos**: `src/components/Map.tsx`, `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`, `src/lib/geo.ts` (overscan de bounds), `src/lib/mapHandle.ts` (handle do mapa para “Buscar bares”).
+**Arquivos**: `src/components/Map.tsx`, `src/app/page.tsx`, `src/lib/use-venues-map.ts` (estado do mapa, geolocalização e carregamento de bares), `src/lib/venue-state.ts` (merge e cache por bbox), `src/app/layout.tsx`, `src/app/globals.css`, `src/lib/geo.ts` (overscan de bounds), `src/lib/mapHandle.ts` (handle do mapa para “Buscar bares”).
 
 ---
 
@@ -63,7 +63,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - **Apenas happy hour**.
 - **Ordenar**: Menor preço, Maior preço, **Mais perto** e Nome. "Mais perto" usa a última localização conhecida do usuário (navegador ou IP); sem ela, a distância é medida a partir do centro do mapa (`distanceKm` em `src/lib/geo.ts`).
 
-**Arquivos**: `src/components/FilterBar.tsx`, `src/components/FilterChips.tsx`, `src/app/page.tsx`, `src/lib/api.ts`, `src/lib/geo.ts`.
+**Arquivos**: `src/components/FilterBar.tsx`, `src/components/FilterChips.tsx`, `src/app/page.tsx`, `src/lib/use-venue-filters.ts`, `src/lib/venue-state.ts` (filtros e ordenação), `src/lib/api.ts`, `src/lib/geo.ts`.
 
 ---
 
@@ -181,7 +181,7 @@ Ao selecionar um bar no mapa ou na lista:
 
 - **Adicionar/editar preços** (`AddPricesModal`): não exige login; se houver sessão, o token é enviado para registrar o autor. O bar passa a mostrar “Preços não verificados”.
 
-**Arquivos**: `src/components/AddVenueModal.tsx`, `src/components/LoginCard.tsx`, `src/components/AddPricesModal.tsx`, `src/app/page.tsx`, `src/lib/api.ts` (`saveErrorMessage`), `src/lib/supabase-browser.ts`, `src/lib/use-auth-user.ts`, `src/lib/geocode.ts`.
+**Arquivos**: `src/components/AddVenueModal.tsx`, `src/components/LoginCard.tsx`, `src/components/AddPricesModal.tsx`, `src/app/page.tsx`, `src/lib/use-venues-map.ts` (salvar bar/preços), `src/lib/api.ts` (`saveErrorMessage`), `src/lib/supabase-browser.ts`, `src/lib/use-auth-user.ts`, `src/lib/geocode.ts`.
 
 ---
 

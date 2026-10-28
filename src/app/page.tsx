@@ -1,20 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState, useRef, useEffect } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { MOCK_VENUES, SAO_CARLOS_CENTER, DEFAULT_ZOOM } from "@/data/venues";
-import {
-  fetchVenuesInBounds,
-  loadVenuesErrorMessage,
-  createVenue,
-  updateVenuePrices,
-  reportVenuePrices,
-  saveErrorMessage,
-  type ApiError,
-  type VenueFromAPI,
-} from "@/lib/api";
-import { expandBounds, distanceKm } from "@/lib/geo";
-import type { Venue, SortOption, PriceFilter, BeerType } from "@/types";
+import { reportVenuePrices } from "@/lib/api";
+import type { Venue } from "@/types";
 import { FilterBar } from "@/components/FilterBar";
 import { VenueList } from "@/components/VenueList";
 import { AddVenueModal } from "@/components/AddVenueModal";
@@ -22,312 +11,59 @@ import { AddPricesModal } from "@/components/AddPricesModal";
 import { AddressSearch } from "@/components/AddressSearch";
 import { FilterChips } from "@/components/FilterChips";
 import { VenueSheet } from "@/components/VenueSheet";
-import { attachMapHandle, type MapHandle } from "@/lib/mapHandle";
 import { MapLoadingPlaceholder } from "@/components/MapLoadingPlaceholder";
 import { REOPEN_ADD_VENUE_KEY } from "@/components/LoginCard";
-import { getAccessToken } from "@/lib/supabase-browser";
+import { BEER_TYPE_LABELS, getMinBeerPrice } from "@/lib/venue-state";
+import { useVenuesMap } from "@/lib/use-venues-map";
+import { useVenueFilters } from "@/lib/use-venue-filters";
 
 const Map = dynamic(() => import("@/components/Map").then((m) => m.Map), {
   ssr: false,
   loading: () => <MapLoadingPlaceholder />,
 });
 
-const BEER_TYPE_LABELS: Record<BeerType, string> = {
-  chope: "Chope",
-  long_neck: "Long neck",
-  lata: "Lata",
-  garrafa: "Garrafa",
-  outro: "Outro",
-};
-
-/** Zoom threshold: allow places search when zoom >= this. */
-const PLACES_ZOOM_THRESHOLD = 12;
-/** Minimum ms between two venue requests (0 = disabled). */
-const PLACES_REQUEST_COOLDOWN_MS = 0;
-/** Debounce before auto-loading venues after user stops panning/zooming. */
-const AUTO_LOAD_DEBOUNCE_MS = 150;
-/** Expand visible bounds by this factor when calling the API (overscanning for smoother pans). */
-const OVERSCAN_FACTOR = 1.25;
-/** Expand bounds slightly for filtering the list so it matches what user sees on screen. */
-const LIST_BOUNDS_OVERSCAN_FACTOR = 1.05;
-const PLACES_CACHE_MAX_ENTRIES = 30;
-const PRECISE_LOCATION_ZOOM = 14;
-const APPROX_LOCATION_ZOOM = 12;
-/** Max external (Google) venues to keep in state; evict oldest by id when exceeded to avoid unbounded growth. */
-const MAX_EXTERNAL_VENUES = 300;
-/** Rounded bbox key for cache (~1.1 km grid) so nearby pans reuse data anywhere in the world. */
-function bboxCacheKey(bounds: { south: number; west: number; north: number; east: number }): string {
-  const { south, west, north, east } = bounds;
-  return `${south.toFixed(2)},${west.toFixed(2)},${north.toFixed(2)},${east.toFixed(2)}`;
-}
-
-/** Approximate visible bounds from center + zoom (used when map instance is not ready yet). */
-function boundsFromCenterAndZoom(
-  center: { lat: number; lng: number },
-  zoom: number
-): { south: number; west: number; north: number; east: number } {
-  const deg = 360 / Math.pow(2, zoom);
-  const halfLat = (deg * 0.6) / 2;
-  const halfLng = deg / 2;
-  return {
-    south: center.lat - halfLat,
-    north: center.lat + halfLat,
-    west: center.lng - halfLng,
-    east: center.lng + halfLng,
-  };
-}
-
-function getMinBeerPrice(venue: Venue): number {
-  if (venue.beerPrices.length === 0) return Infinity;
-  return Math.min(...venue.beerPrices.map((p) => p.priceBRL));
-}
-
-function apiVenueToVenue(v: VenueFromAPI): Venue {
-  return {
-    ...v,
-    beerPrices: (v.beerPrices ?? []).map((p) => ({
-      type: p.type as BeerType,
-      label: p.label,
-      priceBRL: p.priceBRL,
-      volumeMl: p.volumeMl,
-    })),
-    hasHappyHour: v.hasHappyHour ?? false,
-  };
-}
-
-function venueKeyByPlace(venue: Venue): string {
-  return `${venue.name.trim().toLowerCase()}|${venue.lat.toFixed(5)}|${venue.lng.toFixed(5)}`;
-}
-
 type ViewMode = "map" | "list";
 
 export default function Home() {
-  const [venues, setVenues] = useState<Venue[]>(MOCK_VENUES);
-  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(SAO_CARLOS_CENTER);
-  const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
-  const [mapBounds, setMapBounds] = useState<{
-    south: number;
-    west: number;
-    north: number;
-    east: number;
-  }>(() => boundsFromCenterAndZoom(SAO_CARLOS_CENTER, DEFAULT_ZOOM));
-  const [searchMarker, setSearchMarker] = useState<{ lat: number; lng: number } | null>(null);
-  /** Last known user position (browser or IP geolocation); origin for "Mais perto" sorting. */
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [maxPrice, setMaxPrice] = useState<PriceFilter>(null);
-  const [beerType, setBeerType] = useState<BeerType | "">("");
-  const [neighborhood, setNeighborhood] = useState("");
-  const [happyHourOnly, setHappyHourOnly] = useState(false);
-  const [sort, setSort] = useState<SortOption>("price_asc");
+  const {
+    venues,
+    mapCenter,
+    mapZoom,
+    mapBounds,
+    searchMarker,
+    userLocation,
+    osmLoadState,
+    osmError,
+    handleMapBoundsChange,
+    handleMapReady,
+    handleLoadPlacesBars,
+    handleSearchLocation,
+    handleLocateMe,
+    handleAddVenue: saveVenue,
+    handleUpdateVenuePrices: saveVenuePrices,
+  } = useVenuesMap();
+  const {
+    maxPrice,
+    setMaxPrice,
+    beerType,
+    setBeerType,
+    neighborhood,
+    setNeighborhood,
+    happyHourOnly,
+    setHappyHourOnly,
+    sort,
+    setSort,
+    filtersOpen,
+    setFiltersOpen,
+    venuesInBounds,
+    neighborhoods,
+    hasActiveFilters,
+    filteredAndSortedVenues,
+  } = useVenueFilters({ venues, mapBounds, mapCenter, userLocation });
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [venueToEditPrices, setVenueToEditPrices] = useState<Venue | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("map");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [osmLoadState, setOsmLoadState] = useState<"idle" | "loading" | "error" | "success">("idle");
-  const [osmError, setOsmError] = useState<string | null>(null);
-  const osmRequestIdRef = useRef(0);
-  const osmCacheRef = useRef(new globalThis.Map<string, Venue[]>());
-  const lastOverpassRequestTimeRef = useRef(0);
-  const autoLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastBoundsForAutoLoadRef = useRef<{
-    bounds: { south: number; west: number; north: number; east: number };
-    zoom: number;
-  } | null>(null);
-  /** Live map handle from `Map`'s `onReady` (null while the map isn't mounted). */
-  const mapHandleRef = useRef<MapHandle | null>(null);
-  const initialLocationResolvedRef = useRef(false);
-
-  const isFromExternal = (v: Venue) => v.fromOsm || v.fromGoogle;
-
-  /**
-   * Load places for the given bounds (cache or API).
-   * Used by both manual "Buscar bares" and auto-load on pan/zoom.
-   * When isManual is false, cooldown/zoom errors are not shown to the user.
-   */
-  const tryLoadPlacesForBounds = useCallback(
-    (
-      bounds: { south: number; west: number; north: number; east: number },
-      zoom: number,
-      isManual: boolean
-    ) => {
-      if (zoom < PLACES_ZOOM_THRESHOLD) {
-        if (isManual) setOsmError("Dê mais zoom no mapa para buscar bares desta área.");
-        return;
-      }
-
-      const bboxKey = bboxCacheKey(bounds);
-      const cache = osmCacheRef.current;
-
-      const mergeExternalIntoState = (newVenues: Venue[]) => {
-        const byId = new globalThis.Map<string, Venue>(newVenues.map((v) => [v.id, v]));
-        setVenues((prev) => {
-          const rest = prev.filter((v) => !isFromExternal(v));
-          const external = prev.filter(isFromExternal);
-          for (const v of external) {
-            const existing = byId.get(v.id);
-            if (existing) {
-              if (v.beerPrices.length > 0) byId.set(v.id, v);
-            } else {
-              byId.set(v.id, v);
-            }
-          }
-          let merged = Array.from(byId.values());
-          if (merged.length > MAX_EXTERNAL_VENUES) {
-            merged = merged.slice(-MAX_EXTERNAL_VENUES);
-          }
-          // Defensive dedupe: avoid repeated cards when the same venue is merged many times
-          // (e.g. repeated API responses during pan/zoom or local fallback entries).
-          const byPlace = new globalThis.Map<string, Venue>();
-          for (const venue of [...rest, ...merged]) {
-            const key = venueKeyByPlace(venue);
-            const current = byPlace.get(key);
-            if (!current) {
-              byPlace.set(key, venue);
-              continue;
-            }
-            const currentScore =
-              (current.userAdded ? 100 : 0) +
-              (current.beerPrices.length > 0 ? 10 : 0) +
-              Date.parse(current.createdAt);
-            const candidateScore =
-              (venue.userAdded ? 100 : 0) +
-              (venue.beerPrices.length > 0 ? 10 : 0) +
-              Date.parse(venue.createdAt);
-            if (candidateScore >= currentScore) {
-              byPlace.set(key, venue);
-            }
-          }
-          return Array.from(byPlace.values());
-        });
-      };
-
-      if (cache.has(bboxKey)) {
-        const cached = cache.get(bboxKey)!;
-        mergeExternalIntoState(cached);
-        setOsmLoadState("success");
-        setOsmError(null);
-        return;
-      }
-
-      const now = Date.now();
-      if (
-        PLACES_REQUEST_COOLDOWN_MS > 0 &&
-        now - lastOverpassRequestTimeRef.current < PLACES_REQUEST_COOLDOWN_MS
-      ) {
-        if (isManual) setOsmError("Aguarde um pouco entre as buscas.");
-        return;
-      }
-
-      const requestId = ++osmRequestIdRef.current;
-      setOsmLoadState("loading");
-      setOsmError(null);
-      if (PLACES_REQUEST_COOLDOWN_MS > 0) lastOverpassRequestTimeRef.current = now;
-
-      const requestBounds = expandBounds(bounds, OVERSCAN_FACTOR);
-
-      fetchVenuesInBounds(requestBounds)
-        .then((apiVenues) => {
-          if (requestId !== osmRequestIdRef.current) return;
-          const asVenues: Venue[] = apiVenues.map(apiVenueToVenue);
-          mergeExternalIntoState(asVenues);
-          setOsmLoadState("success");
-
-          if (cache.size >= PLACES_CACHE_MAX_ENTRIES) {
-            const firstKey = cache.keys().next().value;
-            if (firstKey != null) cache.delete(firstKey);
-          }
-          cache.set(bboxKey, asVenues);
-        })
-        .catch((e) => {
-          if (requestId !== osmRequestIdRef.current) return;
-          setOsmLoadState("error");
-          setOsmError(loadVenuesErrorMessage(e));
-        });
-    },
-    []
-  );
-
-  // Sync map view to state when user pans/zooms; clear venues when zoom < threshold; trigger auto-load when zoom >= threshold
-  const handleMapBoundsChange = useCallback(
-    (
-      bounds: { south: number; west: number; north: number; east: number },
-      zoom: number,
-      reason: "idle" | "changing"
-    ) => {
-      // Evita feedback/jank: enquanto o usuário arrasta, não sincronizamos center/zoom/state
-      // com props (isso causa loop com `map.panTo`/`map.setZoom` no componente Map).
-      if (reason === "idle") {
-        setMapCenter({
-          lat: (bounds.south + bounds.north) / 2,
-          lng: (bounds.west + bounds.east) / 2,
-        });
-        setMapZoom(zoom);
-        setMapBounds(bounds);
-      }
-
-      if (zoom < PLACES_ZOOM_THRESHOLD) {
-        if (reason === "idle") {
-          if (autoLoadTimeoutRef.current) {
-            clearTimeout(autoLoadTimeoutRef.current);
-            autoLoadTimeoutRef.current = null;
-          }
-          lastBoundsForAutoLoadRef.current = null;
-          setVenues((prev) => prev.filter((v) => !isFromExternal(v)));
-          setOsmError(null);
-          setOsmLoadState("idle");
-        }
-        return;
-      }
-
-      // Mesmo durante o movimento, apenas atualizamos o "alvo" do próximo carregamento.
-      lastBoundsForAutoLoadRef.current = { bounds, zoom };
-      if (autoLoadTimeoutRef.current) clearTimeout(autoLoadTimeoutRef.current);
-      autoLoadTimeoutRef.current = setTimeout(() => {
-        autoLoadTimeoutRef.current = null;
-        const b = lastBoundsForAutoLoadRef.current;
-        if (b) tryLoadPlacesForBounds(b.bounds, b.zoom, false);
-      }, AUTO_LOAD_DEBOUNCE_MS);
-    },
-    [tryLoadPlacesForBounds]
-  );
-
-  const handleMapReady = useCallback(
-    (handle: MapHandle) => attachMapHandle(mapHandleRef, handle),
-    []
-  );
-
-  const handleLoadPlacesBars = useCallback(() => {
-    const current = mapHandleRef.current?.getCurrentBounds();
-    const zoom = current?.zoom ?? mapZoom;
-    const bounds =
-      current?.bounds ?? boundsFromCenterAndZoom(mapCenter, mapZoom);
-    tryLoadPlacesForBounds(bounds, zoom, true);
-  }, [mapZoom, mapCenter, tryLoadPlacesForBounds]);
-
-  const handleSearchLocation = useCallback((lat: number, lng: number, zoom: number) => {
-    setMapCenter({ lat, lng });
-    setMapZoom(zoom);
-    setSearchMarker({ lat, lng });
-  }, []);
-
-  const handleLocateMe = useCallback(() => {
-    if (!("geolocation" in navigator)) return;
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        setMapCenter({ lat, lng });
-        setMapZoom(PRECISE_LOCATION_ZOOM);
-        setSearchMarker({ lat, lng });
-        setUserLocation({ lat, lng });
-      },
-      () => {
-        /* denied or error — silent; user can search address */
-      },
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 }
-    );
-  }, []);
 
   // Back from the Google login redirect started in "Adicionar bar": reopen the modal.
   useEffect(() => {
@@ -341,184 +77,27 @@ export default function Home() {
     }
   }, []);
 
-  // Clear auto-load timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (autoLoadTimeoutRef.current) {
-        clearTimeout(autoLoadTimeoutRef.current);
-        autoLoadTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  // Initial map center: browser geolocation (with prompt) -> IP approximation -> São Carlos fallback.
-  useEffect(() => {
-    if (initialLocationResolvedRef.current) return;
-    initialLocationResolvedRef.current = true;
-    let isCancelled = false;
-
-    const applyLocation = (lat: number, lng: number, zoom: number) => {
-      if (isCancelled) return;
-      setMapCenter({ lat, lng });
-      setMapZoom(zoom);
-      setSearchMarker({ lat, lng });
-      setUserLocation({ lat, lng });
-    };
-
-    const fallbackToIpLocation = async () => {
-      try {
-        const res = await fetch("https://ipapi.co/json/");
-        if (!res.ok) return;
-        const data = (await res.json()) as { latitude?: number; longitude?: number };
-        if (typeof data.latitude === "number" && typeof data.longitude === "number") {
-          applyLocation(data.latitude, data.longitude, APPROX_LOCATION_ZOOM);
-        }
-      } catch {
-        // Keep São Carlos fallback if IP lookup fails.
-      }
-    };
-
-    if (!("geolocation" in navigator)) {
-      void fallbackToIpLocation();
-      return () => {
-        isCancelled = true;
-      };
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        applyLocation(
-          position.coords.latitude,
-          position.coords.longitude,
-          PRECISE_LOCATION_ZOOM
-        );
-      },
-      () => {
-        void fallbackToIpLocation();
-      },
-      {
-        enableHighAccuracy: false,
-        timeout: 8000,
-        maximumAge: 300000,
-      }
-    );
-
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
-
-  const venuesInBounds = useMemo(() => {
-    const b = expandBounds(mapBounds, LIST_BOUNDS_OVERSCAN_FACTOR);
-    return venues.filter(
-      (v) => v.lat >= b.south && v.lat <= b.north && v.lng >= b.west && v.lng <= b.east
-    );
-  }, [venues, mapBounds]);
-
-  const neighborhoods = useMemo(() => {
-    const set = new Set(venuesInBounds.map((v) => v.neighborhood.trim()).filter(Boolean));
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [venuesInBounds]);
-
-  const hasActiveFilters =
-    maxPrice != null ||
-    beerType !== "" ||
-    neighborhood !== "" ||
-    sort !== "price_asc";
-
-  const filteredAndSortedVenues = useMemo(() => {
-    let list = [...venuesInBounds];
-
-    if (maxPrice != null) {
-      list = list.filter((v) => getMinBeerPrice(v) <= maxPrice);
-    }
-    if (beerType) {
-      list = list.filter((v) => v.beerPrices.some((p) => p.type === beerType));
-    }
-    if (neighborhood) {
-      list = list.filter(
-        (v) => v.neighborhood.toLowerCase() === neighborhood.toLowerCase()
-      );
-    }
-    if (happyHourOnly) {
-      list = list.filter((v) => v.hasHappyHour);
-    }
-
-    if (sort === "price_asc") {
-      list.sort((a, b) => getMinBeerPrice(a) - getMinBeerPrice(b));
-    } else if (sort === "price_desc") {
-      list.sort((a, b) => getMinBeerPrice(b) - getMinBeerPrice(a));
-    } else if (sort === "name") {
-      list.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-    } else if (sort === "distance") {
-      // Without a known user position, "nearest" means nearest to the map center.
-      const origin = userLocation ?? mapCenter;
-      const dist = new globalThis.Map(list.map((v) => [v.id, distanceKm(origin, v)]));
-      list.sort((a, b) => dist.get(a.id)! - dist.get(b.id)!);
-    }
-    return list;
-  }, [venuesInBounds, maxPrice, beerType, neighborhood, happyHourOnly, sort, userLocation, mapCenter]);
-
   const selectedVenue = useMemo(
     () => (selectedVenueId ? venues.find((v) => v.id === selectedVenueId) ?? null : null),
     [venues, selectedVenueId]
   );
 
-  /**
-   * Saves through the API. Only when the backend isn't configured at all (503, e.g. local
-   * demo without Supabase) do we keep the change in memory; any other failure is thrown as a
-   * user-facing message so the modal can show it instead of pretending the save worked.
-   */
-  const handleAddVenue = useCallback(async (
-    venue: Omit<Venue, "id" | "createdAt">,
-    accessToken: string | null
-  ) => {
-    let saved: Venue;
-    try {
-      saved = apiVenueToVenue(
-        await createVenue({
-          name: venue.name,
-          address: venue.address,
-          neighborhood: venue.neighborhood,
-          city: venue.city,
-          state: venue.state,
-          lat: venue.lat,
-          lng: venue.lng,
-          beerPrices: venue.beerPrices,
-          hasHappyHour: venue.hasHappyHour,
-          happyHourDetails: venue.happyHourDetails,
-        }, accessToken)
-      );
-    } catch (e) {
-      if ((e as ApiError).status !== 503) throw new Error(saveErrorMessage(e));
-      saved = {
-        ...venue,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        userAdded: true,
-      };
-    }
-    setVenues((prev) => [...prev, saved]);
-    setAddModalOpen(false);
-  }, []);
+  /** Save errors propagate so the modal stays open and shows them. */
+  const handleAddVenue = useCallback(
+    async (venue: Omit<Venue, "id" | "createdAt">, accessToken: string | null) => {
+      await saveVenue(venue, accessToken);
+      setAddModalOpen(false);
+    },
+    [saveVenue]
+  );
 
-  const handleUpdateVenuePrices = useCallback(async (updatedVenue: Venue) => {
-    let saved: Venue;
-    try {
-      saved = apiVenueToVenue(
-        await updateVenuePrices(updatedVenue.id, {
-          beerPrices: updatedVenue.beerPrices,
-          hasHappyHour: updatedVenue.hasHappyHour,
-          happyHourDetails: updatedVenue.happyHourDetails,
-        }, await getAccessToken())
-      );
-    } catch (e) {
-      if ((e as ApiError).status !== 503) throw new Error(saveErrorMessage(e));
-      saved = updatedVenue;
-    }
-    setVenues((prev) => prev.map((v) => (v.id === updatedVenue.id ? saved : v)));
-    setVenueToEditPrices(null);
-  }, []);
+  const handleUpdateVenuePrices = useCallback(
+    async (updatedVenue: Venue) => {
+      await saveVenuePrices(updatedVenue);
+      setVenueToEditPrices(null);
+    },
+    [saveVenuePrices]
+  );
 
   return (
     <div className="flex flex-col h-dvh min-h-0">
