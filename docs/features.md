@@ -18,6 +18,15 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - Inicialização do mapa em 3 etapas: tenta localização do navegador (com consentimento), se falhar usa geolocalização aproximada por IP e, por último, usa fallback em São Carlos (`SAO_CARLOS_CENTER`, zoom 13).
 - **API**: Google Maps JavaScript API. Chave em `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (`.env.local`).
 - **Marcadores em formato de preço**: balão “R$ X,X” com o menor preço do bar (vermelho; amarelo quando selecionado).
+- **Agrupamento de marcadores por preço** (`clusterMapVenues` em `src/lib/map-markers.ts`): os bares são projetados em pixels (Web Mercator, `256 · 2^zoom`) e, abaixo do zoom **18**, marcadores que se sobreporiam na tela são agrupados de forma gulosa, em ordem de prioridade:
+  - O **bar selecionado** é colocado primeiro, sempre como balão amarelo individual e por cima de todos (`zIndex` 1000); nunca entra num grupo.
+  - Depois os **bares com preço**, do **mais barato** para o mais caro (empate: cadastrados por usuário primeiro, depois id). Quando dois balões colidem, o mais barato fica com o marcador e o grupo é ancorado nele; balões mais baratos também ficam por cima (`zIndex` maior).
+  - Por último os **bares sem preço** (ex.: importados do OSM), que cedem espaço aos com preço e entram no grupo do bar com preço vizinho.
+- **Grupo com preço**: balão um pouco mais largo com o melhor preço do local e um selo escuro “+N” com a quantidade de outros bares ali.
+- **Grupo só de bares sem preço**: círculo escuro com borda âmbar e o número de bares, posicionado no centro do grupo (em vez de vários balões “?” empilhados).
+- **Bares sem preço isolados**: pino circular discreto (escuro, borda âmbar, “+”) a partir do zoom **16**; abaixo disso, um ponto pequeno. Continuam clicáveis para adicionar preços.
+- **Clique no grupo**: centraliza o mapa no grupo e aproxima **2 níveis** de zoom (máximo 18) para separar os bares. No zoom **≥ 18** nada é agrupado, então bares vizinhos no mesmo quarteirão sempre podem ser tocados individualmente.
+- O agrupamento usa o zoom ao vivo do mapa (`zoom_changed`), então os grupos se desfazem/refazem durante o zoom. Testes: `src/lib/map-markers.test.ts` (em `npm run test:scripts`).
 - Atualização de centro/zoom quando o usuário pesquisa endereço ou interage com o mapa.
 - Exibição de um marcador adicional (azul) para o resultado da busca de endereço.
 - **Onde estou**: botão flutuante (📍) no mapa recentraliza com `navigator.geolocation` (zoom 14); em caso de negação/erro não mostra alerta (o usuário pode usar a busca de endereço).
@@ -37,7 +46,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 - **Barra inferior (Mapa / Adicionar bar)**: `viewportFit: "cover"` no layout para `env(safe-area-inset-bottom)` funcionar no iOS; classe `.safe-area-pb` em `globals.css` com `padding-bottom: max(0.75rem, env(...))`; shell da página usa `h-dvh` em vez de `100vh` para acompanhar a barra dinâmica do Safari.
 
-**Arquivos**: `src/components/Map.tsx`, `src/app/page.tsx`, `src/lib/use-venues-map.ts` (estado do mapa, geolocalização e carregamento de bares), `src/lib/venue-state.ts` (merge e cache por bbox), `src/app/layout.tsx`, `src/app/globals.css`, `src/lib/geo.ts` (overscan de bounds), `src/lib/mapHandle.ts` (handle do mapa para “Buscar bares”).
+**Arquivos**: `src/components/Map.tsx`, `src/lib/map-markers.ts` (agrupamento de marcadores), `src/app/page.tsx`, `src/lib/use-venues-map.ts` (estado do mapa, geolocalização e carregamento de bares), `src/lib/venue-state.ts` (merge e cache por bbox), `src/app/layout.tsx`, `src/app/globals.css`, `src/lib/geo.ts` (overscan de bounds), `src/lib/mapHandle.ts` (handle do mapa para “Buscar bares”).
 
 ---
 
