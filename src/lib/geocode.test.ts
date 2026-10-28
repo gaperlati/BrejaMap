@@ -1,0 +1,261 @@
+/**
+ * Tests for the pure Nominatim helpers: run with `npm run test:scripts`.
+ */
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  dedupeNominatimResults,
+  extractNominatimAddress,
+  formatNominatimResult,
+  rankNominatimResults,
+  type NominatimResult,
+} from "./geocode";
+
+const SAO_CARLOS_ADDRESS = {
+  city: "São Carlos",
+  municipality: "São Carlos",
+  state: "São Paulo",
+  "ISO3166-2-lvl4": "BR-SP",
+  country: "Brasil",
+};
+
+const SAO_CARLOS_DISPLAY =
+  "São Carlos, Região Geográfica Imediata de São Carlos, Região Geográfica Intermediária de Araraquara, São Paulo, Região Sudeste, Brasil";
+
+const saoCarlosNode: NominatimResult = {
+  place_id: 1,
+  osm_type: "node",
+  class: "place",
+  type: "city",
+  addresstype: "city",
+  name: "São Carlos",
+  importance: 0.55,
+  lat: "-22.0154",
+  lon: "-47.8911",
+  display_name: SAO_CARLOS_DISPLAY,
+  address: SAO_CARLOS_ADDRESS,
+};
+
+const saoCarlosRelation: NominatimResult = {
+  ...saoCarlosNode,
+  place_id: 2,
+  osm_type: "relation",
+  class: "boundary",
+  type: "administrative",
+  addresstype: "city",
+  importance: 0.6,
+  lat: "-21.9500",
+  lon: "-47.8800",
+};
+
+const saoCarlosSC: NominatimResult = {
+  place_id: 3,
+  osm_type: "relation",
+  class: "boundary",
+  type: "administrative",
+  addresstype: "town",
+  name: "São Carlos",
+  importance: 0.45,
+  lat: "-27.0786",
+  lon: "-53.0036",
+  display_name: "São Carlos, Região Geográfica Imediata de Chapecó, Santa Catarina, Região Sul, Brasil",
+  address: {
+    town: "São Carlos",
+    state: "Santa Catarina",
+    "ISO3166-2-lvl4": "BR-SC",
+    country: "Brasil",
+  },
+};
+
+const saoCarlosRS: NominatimResult = {
+  place_id: 4,
+  osm_type: "node",
+  class: "place",
+  type: "village",
+  addresstype: "village",
+  name: "São Carlos",
+  importance: 0.2,
+  lat: "-30.3000",
+  lon: "-55.0000",
+  display_name: "São Carlos, Rosário do Sul, Rio Grande do Sul, Região Sul, Brasil",
+  address: {
+    village: "São Carlos",
+    municipality: "Rosário do Sul",
+    state: "Rio Grande do Sul",
+    "ISO3166-2-lvl4": "BR-RS",
+    country: "Brasil",
+  },
+};
+
+const centroSaoCarlos: NominatimResult = {
+  place_id: 5,
+  class: "place",
+  type: "suburb",
+  addresstype: "suburb",
+  name: "Centro",
+  lat: "-22.0175",
+  lon: "-47.8909",
+  display_name: "Centro, São Carlos, Região Geográfica Imediata de São Carlos, São Paulo, Região Sudeste, 13560-000, Brasil",
+  address: { suburb: "Centro", postcode: "13560-000", ...SAO_CARLOS_ADDRESS },
+};
+
+const centroCampinas: NominatimResult = {
+  place_id: 6,
+  class: "place",
+  type: "suburb",
+  addresstype: "suburb",
+  name: "Centro",
+  lat: "-22.9056",
+  lon: "-47.0608",
+  display_name: "Centro, Campinas, São Paulo, Região Sudeste, Brasil",
+  address: {
+    suburb: "Centro",
+    city: "Campinas",
+    state: "São Paulo",
+    "ISO3166-2-lvl4": "BR-SP",
+    country: "Brasil",
+  },
+};
+
+const streetResult: NominatimResult = {
+  place_id: 7,
+  class: "place",
+  type: "house",
+  addresstype: "place",
+  lat: "-22.0170",
+  lon: "-47.8900",
+  display_name: "2100, Av. São Carlos, Centro, São Carlos, Região Sudeste, 13560-000, Brasil",
+  address: {
+    house_number: "2100",
+    road: "Av. São Carlos",
+    suburb: "Centro",
+    postcode: "13560-000",
+    ...SAO_CARLOS_ADDRESS,
+  },
+};
+
+const barResult: NominatimResult = {
+  ...streetResult,
+  place_id: 8,
+  class: "amenity",
+  type: "bar",
+  addresstype: "amenity",
+  name: "Bar do Zé",
+};
+
+function assertNoNoise(text: string) {
+  assert.doesNotMatch(text, /Região|Brasil|13560/);
+}
+
+test("dedupe collapses the city node and its administrative relation", () => {
+  const out = dedupeNominatimResults([saoCarlosNode, saoCarlosRelation, saoCarlosSC]);
+  assert.deepEqual(out.map((r) => r.place_id), [1, 3]);
+});
+
+test("dedupe keeps homonymous streets/POIs that are far apart", () => {
+  const farBar = { ...barResult, place_id: 9, lat: "-22.1000", lon: "-47.9500" };
+  assert.equal(dedupeNominatimResults([barResult, farBar]).length, 2);
+  const nearBar = { ...barResult, place_id: 10, lat: "-22.0171" };
+  assert.equal(dedupeNominatimResults([barResult, nearBar]).length, 1);
+});
+
+test("formats a city without repeating it in the subtitle", () => {
+  const f = formatNominatimResult(saoCarlosRelation);
+  assert.deepEqual(f, {
+    title: "São Carlos",
+    subtitle: "São Paulo, SP",
+    shortLabel: "São Carlos, SP",
+    zoom: 13,
+  });
+});
+
+test("formats a village with its parent municipality", () => {
+  const f = formatNominatimResult(saoCarlosRS);
+  assert.equal(f.title, "São Carlos");
+  assert.equal(f.subtitle, "Rosário do Sul, RS");
+  assert.equal(f.zoom, 13);
+});
+
+test("formats a neighborhood", () => {
+  const f = formatNominatimResult(centroSaoCarlos);
+  assert.deepEqual(f, {
+    title: "Centro",
+    subtitle: "São Carlos, SP",
+    shortLabel: "Centro, São Carlos - SP",
+    zoom: 14,
+  });
+  assertNoNoise(f.title + f.subtitle + f.shortLabel);
+});
+
+test("formats a street address", () => {
+  const f = formatNominatimResult(streetResult);
+  assert.deepEqual(f, {
+    title: "Av. São Carlos, 2100",
+    subtitle: "Centro · São Carlos - SP",
+    shortLabel: "Av. São Carlos, 2100 — São Carlos, SP",
+    zoom: 16,
+  });
+  assertNoNoise(f.title + f.subtitle + f.shortLabel);
+});
+
+test("formats a POI with its street in the subtitle", () => {
+  const f = formatNominatimResult(barResult);
+  assert.equal(f.title, "Bar do Zé");
+  assert.equal(f.subtitle, "Av. São Carlos, 2100, Centro · São Carlos - SP");
+  assert.equal(f.zoom, 16);
+});
+
+test("falls back to the cleaned display name when the address is missing", () => {
+  const f = formatNominatimResult({
+    place_id: 11,
+    lat: "0",
+    lon: "0",
+    display_name: "Região Sudeste, Brasil, Algum Lugar",
+  });
+  assert.equal(f.title, "Algum Lugar");
+  assertNoNoise(f.title + f.subtitle);
+});
+
+test("extracts the 2-letter state code from the state name when ISO is missing", () => {
+  const parts = extractNominatimAddress({
+    place_id: 12,
+    lat: "0",
+    lon: "0",
+    display_name: "",
+    address: { road: "Rua A", city: "Curitiba", state: "Paraná" },
+  });
+  assert.equal(parts.stateCode, "PR");
+  assert.equal(parts.street, "Rua A");
+});
+
+test("ranks São Carlos, SP first and keeps the other states", () => {
+  const out = rankNominatimResults(
+    [saoCarlosSC, saoCarlosRS, saoCarlosNode, saoCarlosRelation],
+    "sao carlos"
+  );
+  assert.equal(out.length, 3);
+  assert.equal(extractNominatimAddress(out[0]).stateCode, "SP");
+  assert.deepEqual(
+    out.slice(1).map((r) => extractNominatimAddress(r).stateCode).sort(),
+    ["RS", "SC"]
+  );
+});
+
+test("exact title match beats a substring match", () => {
+  const out = rankNominatimResults([streetResult, saoCarlosNode], "São Carlos");
+  assert.equal(out[0].place_id, saoCarlosNode.place_id);
+});
+
+test("biasLocation boosts closer results", () => {
+  const campinas = { lat: -22.9, lng: -47.06 };
+  const saoCarlos = { lat: -22.01, lng: -47.89 };
+  assert.equal(
+    rankNominatimResults([centroSaoCarlos, centroCampinas], "Centro", campinas)[0].place_id,
+    centroCampinas.place_id
+  );
+  assert.equal(
+    rankNominatimResults([centroCampinas, centroSaoCarlos], "Centro", saoCarlos)[0].place_id,
+    centroSaoCarlos.place_id
+  );
+});

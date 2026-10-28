@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { searchAddress, type NominatimResult } from "@/lib/geocode";
+import { formatNominatimResult, searchAddress, type NominatimResult } from "@/lib/geocode";
 
 interface AddressSearchProps {
   onSelectLocation: (lat: number, lng: number, zoom: number) => void;
   placeholder?: string;
+  /** Results closer to this point rank higher (user location or map center). */
+  biasLocation?: { lat: number; lng: number };
 }
 
 export function AddressSearch({
   onSelectLocation,
   placeholder = "Buscar endereço ou cidade...",
+  biasLocation,
 }: AddressSearchProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<NominatimResult[]>([]);
@@ -25,7 +28,7 @@ export function AddressSearch({
     }
     setLoading(true);
     try {
-      const data = await searchAddress(q);
+      const data = await searchAddress(q, { biasLocation });
       setResults(data);
       setOpen(true);
     } catch {
@@ -33,7 +36,7 @@ export function AddressSearch({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [biasLocation]);
 
   const handleChange = (value: string) => {
     setQuery(value);
@@ -49,8 +52,9 @@ export function AddressSearch({
   const handleSelect = (r: NominatimResult) => {
     const lat = parseFloat(r.lat);
     const lng = parseFloat(r.lon);
-    onSelectLocation(lat, lng, 15);
-    setQuery(r.display_name);
+    const formatted = formatNominatimResult(r);
+    onSelectLocation(lat, lng, formatted.zoom);
+    setQuery(formatted.shortLabel);
     setResults([]);
     setOpen(false);
   };
@@ -90,30 +94,31 @@ export function AddressSearch({
           role="listbox"
           className="absolute top-full left-0 right-0 mt-1 py-1 rounded-lg bg-stone-800 border border-stone-700 shadow-xl z-[10000] max-h-60 overflow-y-auto"
         >
-          {results.map((r) => (
-            <li
-              key={r.place_id}
-              role="option"
-              aria-selected={false}
-              tabIndex={0}
-              onClick={() => handleSelect(r)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSelect(r);
-              }}
-              className="px-4 py-2.5 text-sm text-stone-200 hover:bg-stone-700 cursor-pointer border-b border-stone-700/50 last:border-0"
-            >
-              <span className="block font-medium text-stone-100 truncate">
-                {r.display_name}
-              </span>
-              {r.address?.state && (
-                <span className="text-xs text-stone-500">
-                  {[r.address.city || r.address.town || r.address.village, r.address.state]
-                    .filter(Boolean)
-                    .join(", ")}
+          {results.map((r) => {
+            const formatted = formatNominatimResult(r);
+            return (
+              <li
+                key={r.place_id}
+                role="option"
+                aria-selected={false}
+                tabIndex={0}
+                onClick={() => handleSelect(r)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSelect(r);
+                }}
+                className="px-4 py-2.5 text-sm text-stone-200 hover:bg-stone-700 cursor-pointer border-b border-stone-700/50 last:border-0"
+              >
+                <span className="block font-medium text-stone-100 truncate">
+                  {formatted.title}
                 </span>
-              )}
-            </li>
-          ))}
+                {formatted.subtitle && (
+                  <span className="block text-xs text-stone-500 truncate">
+                    {formatted.subtitle}
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
