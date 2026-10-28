@@ -75,13 +75,27 @@ export function validateImportBbox(bbox: OverpassBbox): string | null {
 
 export type OsmElementType = "node" | "way" | "relation";
 
+export interface OverpassLatLon {
+  lat: number;
+  lon: number;
+}
+
+/** Relation member as returned by `out geom` (ways carry their node coordinates in order). */
+export interface OverpassMember {
+  type: OsmElementType;
+  ref: number;
+  role: string;
+  geometry?: (OverpassLatLon | null)[];
+}
+
 export interface OverpassElement {
   type: OsmElementType;
   id: number;
   lat?: number;
   lon?: number;
-  center?: { lat: number; lon: number };
+  center?: OverpassLatLon;
   tags?: Record<string, string>;
+  members?: OverpassMember[];
 }
 
 export interface OverpassResponse {
@@ -162,6 +176,15 @@ out center tags;
   `.trim();
 }
 
+/** One relation with its member ways' geometry (used for municipal boundaries). */
+export function buildRelationGeometryQuery(relationId: number): string {
+  return `
+[out:json][timeout:${OVERPASS_QUERY_TIMEOUT_S}];
+rel(${relationId});
+out geom;
+  `.trim();
+}
+
 /** Parses Retry-After (seconds or HTTP date) into milliseconds; null when absent/invalid. */
 export function parseRetryAfter(header: string | null, now: number = Date.now()): number | null {
   if (!header) return null;
@@ -184,13 +207,10 @@ export interface FetchOsmOptions {
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
- * One sequential Overpass request for bars/pubs in the bbox (with bounded retries on 429/5xx overload).
- * Validates the bbox before any network call.
+ * One sequential Overpass request (with bounded retries on 429/5xx overload).
+ * Rejects partial results that Overpass reports as a runtime error.
  */
-export async function fetchOsmBars(bbox: OverpassBbox, options: FetchOsmOptions = {}): Promise<OsmBar[]> {
-  const bboxError = validateImportBbox(bbox);
-  if (bboxError) throw new Error(bboxError);
-
+async function runOverpassQuery(query: string, options: FetchOsmOptions): Promise<OverpassResponse> {
   const {
     maxRetries = 0,
     fetchImpl = fetch,
@@ -198,7 +218,7 @@ export async function fetchOsmBars(bbox: OverpassBbox, options: FetchOsmOptions 
     onRetry,
     url = OVERPASS_URL,
   } = options;
-  const body = `data=${encodeURIComponent(buildBarsQuery(bbox))}`;
+  const body = `data=${encodeURIComponent(query)}`;
 
   for (let attempt = 0; ; attempt++) {
     const res = await fetchImpl(url, {
@@ -233,14 +253,39 @@ export async function fetchOsmBars(bbox: OverpassBbox, options: FetchOsmOptions 
     if (!Array.isArray(data.elements)) {
       throw new Error("Overpass API: resposta sem 'elements'.");
     }
-
-    const bars: OsmBar[] = [];
-    for (const el of data.elements) {
-      const bar = elementToOsmBar(el);
-      if (bar) bars.push(bar);
-    }
-    return bars;
+    return data;
   }
+}
+
+/**
+ * One sequential Overpass request for bars/pubs in the bbox (with bounded retries on 429/5xx overload).
+ * Validates the bbox before any network call.
+ */
+export async function fetchOsmBars(bbox: OverpassBbox, options: FetchOsmOptions = {}): Promise<OsmBar[]> {
+  const bboxError = validateImportBbox(bbox);
+  if (bboxError) throw new Error(bboxError);
+
+  const data = await runOverpassQuery(buildBarsQuery(bbox), options);
+  const bars: OsmBar[] = [];
+  for (const el of data.elements) {
+    const bar = elementToOsmBar(el);
+    if (bar) bars.push(bar);
+  }
+  return bars;
+}
+
+/**
+ * Fetches one OSM relation with its member geometry (`out geom`). Throws when the relation is
+ * missing, so callers never fall back to unfiltered data.
+ */
+export async function fetchOsmRelation(relationId: number, options: FetchOsmOptions = {}): Promise<OverpassElement> {
+  if (!Number.isSafeInteger(relationId) || relationId <= 0) {
+    throw new Error(`id de relação OSM inválido: ${relationId}`);
+  }
+  const data = await runOverpassQuery(buildRelationGeometryQuery(relationId), options);
+  const rel = data.elements.find((el) => el.type === "relation" && el.id === relationId);
+  if (!rel) throw new Error(`Overpass não devolveu a relação OSM ${relationId}.`);
+  return rel;
 }
 
 /**
