@@ -22,3 +22,34 @@ These defaults are optimized for AI coding agents (and humans) working on apps t
   needed. Always curl https://ai-gateway.vercel.sh/v1/models first; never trust model IDs from memory
 - For durable agent loops or untrusted code: use Workflow (pause/resume/state) + Sandbox; use Vercel MCP for secure infra access
 <!-- VERCEL BEST PRACTICES END -->
+
+## BrejaMap Project State & Workflow
+
+Read this section first to resume work in a new session; keep it current when the backlog moves.
+
+### Role & architecture
+
+- BrejaMap is a crowdsourced map of beer prices in bars (Brazil, starting in São Carlos/SP).
+- Stack: Next.js 15.5 (App Router) + React 19 + TypeScript + Tailwind CSS + Google Maps (`@react-google-maps/api`) + Supabase Postgres (project `marksrnjlviagfteprbd`).
+- Production: https://brejamap.vercel.app (Vercel).
+
+### Single source of truth files
+
+- `docs/ROADMAP.md` — live checklist of completed items, current phase and prioritized backlog.
+- `docs/features.md` — detailed specification of all implemented features, API contracts, DB schema and files.
+- `supabase/migrations/001..004_*.sql` — every database migration applied in production.
+
+### Repository & PR conventions
+
+- Never push directly to `master`; always work on a feature branch and open a PR.
+- Commit messages, branch names, code comments and PR titles/bodies are in **English**, with zero AI/model attribution (no model names, no `Co-Authored-By` trailers).
+- User-facing UI strings and all documentation under `docs/` are in **Portuguese (pt-BR)**.
+- Run `npm run lint`, `npm run test:scripts` and `npm run build` before pushing; all must pass with no errors or warnings.
+
+### Current production & backlog snapshot
+
+- Migrations `001` through `004` are live in production Supabase: RLS enabled on all tables, atomic RPC writes, Postgres fixed-window rate limits, Google + 6-digit email OTP auth configured, `USER_EDITS_ENABLED=true`, 27 São Carlos OSM venues imported.
+- Completed: #1 Next 15 / React 19, #2 `mapHandle` bounds fix, #3 OSM import script, #4 Auth + rate limits + moderation, #5 Atomic venue/price writes, #8 Home page hooks refactor, address search ranking/formatting, price-aware map marker clustering, removal of the IP-geolocation fallback that snapped the map to São Paulo.
+- Next prioritized backlog:
+  1. **Price freshness** — `updated_at` on prices, "atualizado há X dias" label and an "Ainda é esse preço? Sim/Não" confirmation.
+  2. **Photo-to-prices** — upload a menu photo, extract `{type, brand, price}` via Vercel AI Gateway, and show a prefilled form the user confirms.

@@ -15,7 +15,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 ## 1. Mapa (Google Maps)
 
-- Inicialização do mapa em 3 etapas: tenta localização do navegador (com consentimento), se falhar usa geolocalização aproximada por IP e, por último, usa fallback em São Carlos (`SAO_CARLOS_CENTER`, zoom 13).
+- **Inicialização do mapa**: o mapa abre em São Carlos (`SAO_CARLOS_CENTER`, zoom 13) e consulta a geolocalização do navegador ao iniciar (timeout de 4 s). Se a permissão for concedida antes de o usuário mover o mapa (arrastar, dar zoom, pesquisar endereço ou tocar em “Onde estou”), o mapa centraliza na localização do usuário com zoom 14, sem marcador azul; se o usuário já tiver interagido, a localização é usada só para a ordenação “Mais perto”. Se for negada ou expirar, o mapa permanece em São Carlos — não há fallback por geolocalização de IP (que levava o mapa para São Paulo capital).
 - **API**: Google Maps JavaScript API. Chave em `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (`.env.local`).
 - **Marcadores em formato de preço**: balão “R$ X,X” com o menor preço do bar (vermelho; amarelo quando selecionado).
 - **Agrupamento de marcadores por preço** (`clusterMapVenues` em `src/lib/map-markers.ts`): os bares são projetados em pixels (Web Mercator, `256 · 2^zoom`) e, abaixo do zoom **18**, marcadores que se sobreporiam na tela são agrupados de forma gulosa, em ordem de prioridade:
@@ -79,7 +79,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - **Tipo de cerveja**: filtra bares que tenham ao menos um preço daquele tipo (bares sem preços ficam de fora).
 - **Bairro**: lista os bairros dos bares visíveis (ignora vazios, ordem pt-BR).
 - **Apenas happy hour**.
-- **Ordenar**: Menor preço, Maior preço, **Mais perto** e Nome. "Mais perto" usa a última localização conhecida do usuário (navegador ou IP); sem ela, a distância é medida a partir do centro do mapa (`distanceKm` em `src/lib/geo.ts`).
+- **Ordenar**: Menor preço, Maior preço, **Mais perto** e Nome. "Mais perto" usa a última localização conhecida do usuário (geolocalização do navegador); sem ela, a distância é medida a partir do centro do mapa (`distanceKm` em `src/lib/geo.ts`).
 
 **Arquivos**: `src/components/FilterBar.tsx`, `src/components/FilterChips.tsx`, `src/app/page.tsx`, `src/lib/use-venue-filters.ts`, `src/lib/venue-state.ts` (filtros e ordenação), `src/lib/api.ts`, `src/lib/geo.ts`.
 

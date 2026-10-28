@@ -32,7 +32,10 @@ const AUTO_LOAD_DEBOUNCE_MS = 150;
 const OVERSCAN_FACTOR = 1.25;
 const PLACES_CACHE_MAX_ENTRIES = 30;
 const PRECISE_LOCATION_ZOOM = 14;
-const APPROX_LOCATION_ZOOM = 12;
+/** Startup geolocation timeout; past it the map simply stays on the São Carlos default. */
+const INITIAL_GEOLOCATION_TIMEOUT_MS = 4000;
+/** Center shift (degrees) on an idle report that counts as the user having moved the map. */
+const USER_MOVE_THRESHOLD_DEG = 0.002;
 
 export type OsmLoadState = "idle" | "loading" | "error" | "success";
 
@@ -48,7 +51,7 @@ export function useVenuesMap() {
     boundsFromCenterAndZoom(SAO_CARLOS_CENTER, DEFAULT_ZOOM)
   );
   const [searchMarker, setSearchMarker] = useState<{ lat: number; lng: number } | null>(null);
-  /** Last known user position (browser or IP geolocation); origin for "Mais perto" sorting. */
+  /** Last known browser geolocation; origin for "Mais perto" sorting. */
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [osmLoadState, setOsmLoadState] = useState<OsmLoadState>("idle");
   const [osmError, setOsmError] = useState<string | null>(null);
@@ -60,6 +63,8 @@ export function useVenuesMap() {
   /** Live map handle from `Map`'s `onReady` (null while the map isn't mounted). */
   const mapHandleRef = useRef<MapHandle | null>(null);
   const initialLocationResolvedRef = useRef(false);
+  /** Set once the user pans/zooms, searches or locates; startup geolocation then won't recenter. */
+  const userInteractedRef = useRef(false);
 
   /**
    * Load places for the given bounds (cache or API).
@@ -132,10 +137,19 @@ export function useVenuesMap() {
       // Evita feedback/jank: enquanto o usuário arrasta, não sincronizamos center/zoom/state
       // com props (isso causa loop com `map.panTo`/`map.setZoom` no componente Map).
       if (reason === "idle") {
-        setMapCenter({
+        const center = {
           lat: (bounds.south + bounds.north) / 2,
           lng: (bounds.west + bounds.east) / 2,
-        });
+        };
+        // The first idle report at the default view comes from the initial mount, not the user.
+        if (
+          zoom !== DEFAULT_ZOOM ||
+          Math.abs(center.lat - SAO_CARLOS_CENTER.lat) > USER_MOVE_THRESHOLD_DEG ||
+          Math.abs(center.lng - SAO_CARLOS_CENTER.lng) > USER_MOVE_THRESHOLD_DEG
+        ) {
+          userInteractedRef.current = true;
+        }
+        setMapCenter(center);
         setMapZoom(zoom);
         setMapBounds(bounds);
       }
@@ -180,12 +194,14 @@ export function useVenuesMap() {
   }, [mapZoom, mapCenter, tryLoadPlacesForBounds]);
 
   const handleSearchLocation = useCallback((lat: number, lng: number, zoom: number) => {
+    userInteractedRef.current = true;
     setMapCenter({ lat, lng });
     setMapZoom(zoom);
     setSearchMarker({ lat, lng });
   }, []);
 
   const handleLocateMe = useCallback(() => {
+    userInteractedRef.current = true;
     if (!("geolocation" in navigator)) return;
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -213,54 +229,31 @@ export function useVenuesMap() {
     };
   }, []);
 
-  // Initial map center: browser geolocation (with prompt) -> IP approximation -> São Carlos fallback.
+  // Initial map center: browser geolocation if available, otherwise stay on São Carlos.
+  // No IP-based fallback: ISP geolocation in Brazil usually resolves to São Paulo capital.
   useEffect(() => {
     if (initialLocationResolvedRef.current) return;
     initialLocationResolvedRef.current = true;
+    if (!("geolocation" in navigator)) return;
     let isCancelled = false;
-
-    const applyLocation = (lat: number, lng: number, zoom: number) => {
-      if (isCancelled) return;
-      setMapCenter({ lat, lng });
-      setMapZoom(zoom);
-      setSearchMarker({ lat, lng });
-      setUserLocation({ lat, lng });
-    };
-
-    const fallbackToIpLocation = async () => {
-      try {
-        const res = await fetch("https://ipapi.co/json/");
-        if (!res.ok) return;
-        const data = (await res.json()) as { latitude?: number; longitude?: number };
-        if (typeof data.latitude === "number" && typeof data.longitude === "number") {
-          applyLocation(data.latitude, data.longitude, APPROX_LOCATION_ZOOM);
-        }
-      } catch {
-        // Keep São Carlos fallback if IP lookup fails.
-      }
-    };
-
-    if (!("geolocation" in navigator)) {
-      void fallbackToIpLocation();
-      return () => {
-        isCancelled = true;
-      };
-    }
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        applyLocation(
-          position.coords.latitude,
-          position.coords.longitude,
-          PRECISE_LOCATION_ZOOM
-        );
+        if (isCancelled) return;
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        setUserLocation({ lat, lng });
+        // Never yank the map away from where the user already went.
+        if (userInteractedRef.current) return;
+        setMapCenter({ lat, lng });
+        setMapZoom(PRECISE_LOCATION_ZOOM);
       },
       () => {
-        void fallbackToIpLocation();
+        /* denied, unavailable or timed out — keep the São Carlos default */
       },
       {
         enableHighAccuracy: false,
-        timeout: 8000,
+        timeout: INITIAL_GEOLOCATION_TIMEOUT_MS,
         maximumAge: 300000,
       }
     );
