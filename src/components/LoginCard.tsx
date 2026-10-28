@@ -1,10 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { resolveGoogleClientId } from "@/lib/google-identity";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 /** sessionStorage flag: reopen "Adicionar bar" after returning from the Google login redirect. */
 export const REOPEN_ADD_VENUE_KEY = "brejamap:reopen-add-venue";
+
+// Literal process.env read so Next.js inlines it. Unset: Google login keeps the OAuth redirect.
+const googleClientId = resolveGoogleClientId(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
 
 type Step = "choose" | "email" | "code";
 
@@ -44,6 +50,9 @@ function GoogleIcon() {
 /**
  * Login shown in "Adicionar bar" when the visitor is signed out: Google, or e-mail with a
  * 6-digit code (typed here, without leaving the page) or the link sent in the same e-mail.
+ * Google uses Google Identity Services + `signInWithIdToken` (consent shows our own origin)
+ * when NEXT_PUBLIC_GOOGLE_CLIENT_ID is set, else (or if the GIS script fails) the
+ * `signInWithOAuth` redirect.
  */
 export function LoginCard() {
   const [step, setStep] = useState<Step>("choose");
@@ -51,6 +60,7 @@ export function LoginCard() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gsiUnavailable, setGsiUnavailable] = useState(false);
 
   const supabase = getSupabaseBrowser();
   if (!supabase) return null;
@@ -72,6 +82,23 @@ export function LoginCard() {
       setError(loginErrorMessage(err));
       setBusy(false);
     }
+  };
+
+  const signInWithGoogleIdToken = async (credential: string | undefined, nonce: string) => {
+    if (!credential) {
+      setError("Não foi possível entrar com o Google. Tente novamente.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const { error: err } = await supabase.auth.signInWithIdToken({
+      provider: "google",
+      token: credential,
+      nonce,
+    });
+    setBusy(false);
+    // On success the session listener swaps this card for the form.
+    if (err) setError(loginErrorMessage(err));
   };
 
   const sendCode = async (e: React.FormEvent) => {
@@ -121,15 +148,24 @@ export function LoginCard() {
 
       {step === "choose" && (
         <div className="space-y-2">
-          <button
-            type="button"
-            onClick={signInWithGoogle}
-            disabled={busy}
-            className="flex w-full items-center justify-center gap-3 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-stone-900 transition hover:bg-stone-100 disabled:opacity-60"
-          >
-            <GoogleIcon />
-            Continuar com Google
-          </button>
+          {googleClientId && !gsiUnavailable ? (
+            <GoogleSignInButton
+              clientId={googleClientId}
+              onCredential={signInWithGoogleIdToken}
+              onUnavailable={() => setGsiUnavailable(true)}
+              disabled={busy}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={signInWithGoogle}
+              disabled={busy}
+              className="flex w-full items-center justify-center gap-3 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-stone-900 transition hover:bg-stone-100 disabled:opacity-60"
+            >
+              <GoogleIcon />
+              Continuar com Google
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -223,6 +259,18 @@ export function LoginCard() {
           {error}
         </p>
       )}
+
+      <p className="text-xs text-stone-500">
+        Saiba quais dados guardamos na nossa{" "}
+        <Link
+          href="/privacidade"
+          target="_blank"
+          className="text-stone-400 underline underline-offset-2 hover:text-stone-200"
+        >
+          Política de privacidade
+        </Link>
+        .
+      </p>
     </div>
   );
 }

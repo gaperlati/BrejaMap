@@ -49,7 +49,7 @@ Read this section first to resume work in a new session; keep it current when th
 ### Current production & backlog snapshot
 
 - Migrations `001` through `004` are live in production Supabase: RLS enabled on all tables, atomic RPC writes, Postgres fixed-window rate limits, Google + 6-digit email OTP auth configured, `USER_EDITS_ENABLED=true`, 27 São Carlos OSM venues imported.
-- Completed: #1 Next 15 / React 19, #2 `mapHandle` bounds fix, #3 OSM import script, #4 Auth + rate limits + moderation, #5 Atomic venue/price writes, #8 Home page hooks refactor, address search ranking/formatting, price-aware map marker clustering, removal of the IP-geolocation fallback that snapped the map to São Paulo.
+- Completed: #1 Next 15 / React 19, #2 `mapHandle` bounds fix, #3 OSM import script, #4 Auth + rate limits + moderation, #5 Atomic venue/price writes, #8 Home page hooks refactor, address search ranking/formatting, price-aware map marker clustering, removal of the IP-geolocation fallback that snapped the map to São Paulo, Google login via Google Identity Services + `signInWithIdToken` (falls back to the OAuth redirect while `NEXT_PUBLIC_GOOGLE_CLIENT_ID` is unset) and the `/privacidade` privacy policy page.
 - Next prioritized backlog:
   1. **Price freshness** — `updated_at` on prices, "atualizado há X dias" label and an "Ainda é esse preço? Sim/Não" confirmation.
   2. **Photo-to-prices** — upload a menu photo, extract `{type, brand, price}` via Vercel AI Gateway, and show a prefilled form the user confirms.

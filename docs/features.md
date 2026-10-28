@@ -184,9 +184,10 @@ Ao selecionar um bar no mapa ou na lista:
 
 - Acesso pelo botão **“Adicionar bar”** na barra inferior.
 - **Login obrigatório para cadastrar** (quando o login está configurado com `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`): sem sessão, o modal mostra só o card “Entre para cadastrar um novo bar” (“Para evitar spam, pedimos um login rápido antes de adicionar bares. Editar preços em bares existentes não exige login.”), sem citar o provedor de autenticação:
-  - **Continuar com Google** (`signInWithOAuth`, volta para a origem do site). Antes do redirecionamento grava uma flag em `sessionStorage` e, na volta, `page.tsx` reabre o modal.
+  - **Continuar com Google**: com `NEXT_PUBLIC_GOOGLE_CLIENT_ID` definido, mostra o botão oficial do Google (Google Identity Services, popup/FedCM, `locale` pt-BR) e entra com `signInWithIdToken({ provider: "google", token, nonce })`, sem sair da página; a janela do Google mostra o domínio do BrejaMap em vez de `<projeto>.supabase.co`. A cada tentativa é gerado um nonce aleatório: o Google recebe o SHA-256 (hex) e o Supabase recebe o nonce cru (`src/lib/google-identity.ts`). Se a variável não estiver definida, ou se o script `accounts.google.com/gsi/client` ou o Web Crypto não estiverem disponíveis (ex.: falha de rede, timeout de 10 s, HTTP fora de localhost), volta ao fluxo antigo: `signInWithOAuth`, que redireciona e volta para a origem do site; antes do redirecionamento grava uma flag em `sessionStorage` e, na volta, `page.tsx` reabre o modal.
   - **Continuar com e-mail**: envia o código (`signInWithOtp`) e mostra o campo do código de 6 dígitos (`verifyOtp`, sem sair da página); o link do mesmo e-mail também funciona.
   - Erros de login aparecem em pt-BR genérico (nunca o texto cru do provedor).
+  - Rodapé do card: link “Política de privacidade” (`/privacidade`, abre em nova aba).
   - Logado: o formulário mostra “Conectado como {e-mail}” e o botão **Sair**; ao salvar, o `access_token` da sessão vai em `Authorization: Bearer` (`createVenue(venue, accessToken)`).
   - Sem as variáveis públicas o card não aparece (o formulário é mostrado) e o servidor responde 401 se o backend estiver configurado.
 - Modal com formulário:
@@ -199,7 +200,7 @@ Ao selecionar um bar no mapa ou na lista:
 
 - **Adicionar/editar preços** (`AddPricesModal`): não exige login; se houver sessão, o token é enviado para registrar o autor. O bar passa a mostrar “Preços não verificados”.
 
-**Arquivos**: `src/components/AddVenueModal.tsx`, `src/components/LoginCard.tsx`, `src/components/AddPricesModal.tsx`, `src/app/page.tsx`, `src/lib/use-venues-map.ts` (salvar bar/preços), `src/lib/api.ts` (`saveErrorMessage`), `src/lib/supabase-browser.ts`, `src/lib/use-auth-user.ts`, `src/lib/geocode.ts`.
+**Arquivos**: `src/components/AddVenueModal.tsx`, `src/components/LoginCard.tsx`, `src/components/GoogleSignInButton.tsx`, `src/lib/google-identity.ts` (+ testes), `src/types/google-identity.d.ts`, `src/components/AddPricesModal.tsx`, `src/app/page.tsx`, `src/lib/use-venues-map.ts` (salvar bar/preços), `src/lib/api.ts` (`saveErrorMessage`), `src/lib/supabase-browser.ts`, `src/lib/use-auth-user.ts`, `src/lib/geocode.ts`.
 
 ---
 
@@ -220,6 +221,17 @@ Ao selecionar um bar no mapa ou na lista:
 - **Imagem de compartilhamento** (`src/app/opengraph-image.png` + `.alt.txt`): card estático 1200×630 (usado por WhatsApp, Instagram, X). Para mudar, substitua o PNG.
 
 **Arquivos**: `src/app/error.tsx`, `src/app/layout.tsx`, `src/app/opengraph-image.png`.
+
+---
+
+## 10. Política de privacidade (`/privacidade`)
+
+- Página estática em pt-BR (`src/app/privacidade/page.tsx`, com título/descrição/canonical próprios), linkada no card de login. Também é a URL a cadastrar em Google Auth Platform → Branding.
+- Descreve: conta de login no Supabase Auth (e-mail, id da conta e dados básicos de perfil do Google); autoria de bares/edições (`created_by`, `last_edited_by`, `last_edited_at`); contadores de rate limit com hash SHA-256 salgado de IP/id do usuário (IP cru nunca gravado; linhas apagadas a partir de 1 dia após expirar); geolocalização só no navegador (o servidor recebe apenas os limites do mapa); sessão no armazenamento local; terceiros (Google Maps/login, Nominatim, Supabase, Vercel); retenção e direitos (LGPD).
+- Contato: `CONTACT_EMAIL` (variável só do servidor, lida no build). Sem ela, a página indica o e-mail de suporte exibido na janela de login do Google.
+- Ao mudar coleta de dados (novas tabelas, analytics, uploads de foto), atualize o texto e a data `UPDATED_AT`.
+
+**Arquivos**: `src/app/privacidade/page.tsx`, `src/components/LoginCard.tsx`.
 
 ---
 
