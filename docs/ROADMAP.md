@@ -34,11 +34,12 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 - [x] Escritas atômicas de bar + preços (`003_atomic_venue_writes.sql`): PATCH e POST usam funções Postgres transacionais via RPC; GET não expõe mais mensagens de erro do banco; ver [features.md](./features.md) seção 3.1
 - [x] Rodar a migração `003_atomic_venue_writes.sql` em produção, após revisão
 - [x] Auth + anti-abuso para reabilitar escritas (`004_auth_rate_limits_and_moderation.sql`): login (Google ou e-mail com código/link) obrigatório só para cadastrar bar; edição de preços anônima com rate limit por IP (hash) e por (IP, bar); preços editados pela comunidade ficam “não verificados”; botão “Sinalizar preços incorretos” (`needs_review`); RLS em todas as tabelas; ver [features.md](./features.md) seções 3.1, 6 e 7
-- [ ] Rodar a migração `004_auth_rate_limits_and_moderation.sql` em produção, configurar login (Google + template de e-mail com código) e as variáveis `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`; só então definir `USER_EDITS_ENABLED=true`
+- [x] Rodar a migração `004_auth_rate_limits_and_moderation.sql` em produção, configurar login (Google + template de e-mail com código) e as variáveis `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`; só então definir `USER_EDITS_ENABLED=true`
 
 ### Polimento e robustez
 
 - [x] Corrigir “Buscar bares” para consultar bounds/zoom do mapa ao vivo por callback, com limpeza do handle ao desmontar e reinicialização dos relatórios ao remontar.
+- [x] Refatorar `src/app/page.tsx` em hooks focados (`src/lib/use-venues-map.ts`, `src/lib/use-venue-filters.ts`) e helpers puros testados (`src/lib/venue-state.ts`), sem mudança de comportamento
 - [x] Meta tags e Open Graph: título, descrição, imagem para compartilhamento em redes sociais (atualizar `src/app/layout.tsx`)
 - [x] Error boundaries ou tratamento gracioso: map/API failures devem mostrar mensagem clara ao usuário, não tela em branco
 - [x] "Minha conta" na navegação: oculto até pós-release (a barra inferior só tem Mapa e Adicionar bar)
