@@ -17,8 +17,11 @@ export const BEER_TYPE_LABELS: Record<BeerType, string> = {
   outro: "Outro",
 };
 
-/** Max external (Google) venues to keep in state; evict oldest by id when exceeded to avoid unbounded growth. */
-export const MAX_EXTERNAL_VENUES = 300;
+/**
+ * Max external (OSM/Google) venues to keep in state; the oldest are evicted when exceeded to
+ * avoid unbounded growth. Twice the API cap (500) so a full response plus its neighbours fit.
+ */
+export const MAX_EXTERNAL_VENUES = 1000;
 /** Expand bounds slightly for filtering the list so it matches what user sees on screen. */
 export const LIST_BOUNDS_OVERSCAN_FACTOR = 1.05;
 
@@ -26,6 +29,62 @@ export const LIST_BOUNDS_OVERSCAN_FACTOR = 1.05;
 export function bboxCacheKey(bounds: Bounds): string {
   const { south, west, north, east } = bounds;
   return `${south.toFixed(2)},${west.toFixed(2)},${north.toFixed(2)},${east.toFixed(2)}`;
+}
+
+export interface VenueCacheEntry {
+  venues: Venue[];
+  /** The API had more venues in `requestBounds` than it returned. */
+  truncated: boolean;
+}
+
+interface StoredVenueCacheEntry extends VenueCacheEntry {
+  requestBounds: Bounds;
+}
+
+function containsBounds(outer: Bounds, inner: Bounds): boolean {
+  return (
+    outer.south <= inner.south &&
+    outer.west <= inner.west &&
+    outer.north >= inner.north &&
+    outer.east >= inner.east
+  );
+}
+
+/**
+ * Small FIFO cache of GET /api/venues responses keyed by `bboxCacheKey(visible bounds)`.
+ * A complete response also answers any view inside the area it was fetched for (zooming in
+ * needs no request). A truncated response is only reused for the exact same view: inside it
+ * the API may hold venues that were cut, so zooming in must fetch again.
+ */
+export class VenueBboxCache {
+  private readonly entries = new Map<string, StoredVenueCacheEntry>();
+
+  constructor(private readonly maxEntries: number) {}
+
+  get size(): number {
+    return this.entries.size;
+  }
+
+  get(bounds: Bounds): VenueCacheEntry | undefined {
+    const exact = this.entries.get(bboxCacheKey(bounds));
+    if (exact) return { venues: exact.venues, truncated: exact.truncated };
+    for (const entry of this.entries.values()) {
+      if (!entry.truncated && containsBounds(entry.requestBounds, bounds)) {
+        return { venues: entry.venues, truncated: false };
+      }
+    }
+    return undefined;
+  }
+
+  set(bounds: Bounds, requestBounds: Bounds, entry: VenueCacheEntry): void {
+    const key = bboxCacheKey(bounds);
+    this.entries.delete(key);
+    if (this.entries.size >= this.maxEntries) {
+      const firstKey = this.entries.keys().next().value;
+      if (firstKey != null) this.entries.delete(firstKey);
+    }
+    this.entries.set(key, { ...entry, requestBounds });
+  }
 }
 
 /** Approximate visible bounds from center + zoom (used when map instance is not ready yet). */
@@ -81,29 +140,26 @@ function placeScore(venue: Venue): number {
 /**
  * Merges freshly loaded external venues into the current state: external venues
  * already in state keep their prices, the external set is capped at `maxExternal`
- * (oldest evicted first) and venues at the same place are deduplicated, preferring
- * user-added, then priced, then newer entries.
+ * (previously loaded venues are evicted first, oldest first) and venues at the same place
+ * are deduplicated, preferring user-added, then priced, then newer entries.
  */
 export function mergeExternalVenues(
   prevVenues: Venue[],
   newVenues: Venue[],
   maxExternal: number = MAX_EXTERNAL_VENUES
 ): Venue[] {
-  const byId = new Map<string, Venue>(newVenues.map((v) => [v.id, v]));
+  const fresh = new Map<string, Venue>(newVenues.map((v) => [v.id, v]));
   const rest = prevVenues.filter((v) => !isFromExternal(v));
-  const external = prevVenues.filter(isFromExternal);
-  for (const v of external) {
-    const existing = byId.get(v.id);
-    if (existing) {
-      if (v.beerPrices.length > 0) byId.set(v.id, v);
-    } else {
-      byId.set(v.id, v);
-    }
+  const previousOnly: Venue[] = [];
+  for (const v of prevVenues.filter(isFromExternal)) {
+    if (!fresh.has(v.id)) previousOnly.push(v);
+    else if (v.beerPrices.length > 0) fresh.set(v.id, v);
   }
-  let merged = Array.from(byId.values());
-  if (merged.length > maxExternal) {
-    merged = merged.slice(-maxExternal);
-  }
+  // Fresh venues come in API priority order (priced, user-added, nearest): keep them all
+  // (up to the cap, head first) and evict previous-only venues, oldest first.
+  const freshList = Array.from(fresh.values()).slice(0, maxExternal);
+  const keepPrevious = Math.max(0, maxExternal - freshList.length);
+  const merged = [...previousOnly.slice(previousOnly.length - keepPrevious), ...freshList];
   // Defensive dedupe: avoid repeated cards when the same venue is merged many times
   // (e.g. repeated API responses during pan/zoom or local fallback entries).
   const byPlace = new Map<string, Venue>();

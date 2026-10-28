@@ -11,6 +11,8 @@ interface FilterChipsProps {
   onLoadOsmBars?: () => void;
   osmLoadState?: OsmLoadState;
   osmError?: string | null;
+  /** The current view holds more bars than the API returned. */
+  venuesTruncated?: boolean;
 }
 
 export function FilterChips({
@@ -22,6 +24,7 @@ export function FilterChips({
   onLoadOsmBars,
   osmLoadState = "idle",
   osmError = null,
+  venuesTruncated = false,
 }: FilterChipsProps) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -68,6 +71,11 @@ export function FilterChips({
       {osmError && (
         <p className="text-red-400 text-xs" role="alert">
           {osmError}
+        </p>
+      )}
+      {!osmError && venuesTruncated && (
+        <p className="text-amber-300/90 text-xs" role="status">
+          Dê mais zoom para ver todos os bares desta área
         </p>
       )}
     </div>

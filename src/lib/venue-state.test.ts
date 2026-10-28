@@ -11,6 +11,7 @@ import {
   filterAndSortVenues,
   getMinBeerPrice,
   mergeExternalVenues,
+  VenueBboxCache,
   type VenueFilterOptions,
 } from "./venue-state";
 
@@ -83,7 +84,7 @@ test("mergeExternalVenues keeps non-external venues and previous external ones",
   const local = venue({ id: "local", lat: -22.01 });
   const prevExternal = venue({ id: "g1", fromOsm: true, lat: -22.02 });
   const fresh = venue({ id: "g2", fromGoogle: true, lat: -22.03 });
-  assert.deepEqual(ids(mergeExternalVenues([local, prevExternal], [fresh])), ["local", "g2", "g1"]);
+  assert.deepEqual(ids(mergeExternalVenues([local, prevExternal], [fresh])), ["local", "g1", "g2"]);
 });
 
 test("mergeExternalVenues caps external venues at maxExternal, evicting the oldest", () => {
@@ -95,8 +96,22 @@ test("mergeExternalVenues caps external venues at maxExternal, evicting the olde
     venue({ id: "g2", fromGoogle: true, lat: -22.02 }),
     venue({ id: "g3", fromGoogle: true, lat: -22.03 }),
   ];
-  // Order before capping is fresh ids first, then previous-only ids: g2, g3, g1.
-  assert.deepEqual(ids(mergeExternalVenues(prev, fresh, 2)), ["local", "g3", "g1"]);
+  // Previous-only venues are evicted first: the fresh response is kept whole.
+  assert.deepEqual(ids(mergeExternalVenues(prev, fresh, 2)), ["local", "g2", "g3"]);
+  assert.deepEqual(ids(mergeExternalVenues(prev, fresh, 3)), ["local", "g1", "g2", "g3"]);
+});
+
+test("mergeExternalVenues keeps the head of an oversized fresh response (API priority order)", () => {
+  const prev = [venue({ id: "g0", fromOsm: true, lat: -22.0 })];
+  const fresh = ["g1", "g2", "g3"].map((id, i) => venue({ id, fromOsm: true, lat: -22.01 - i / 100 }));
+  assert.deepEqual(ids(mergeExternalVenues(prev, fresh, 2)), ["g1", "g2"]);
+});
+
+test("mergeExternalVenues keeps a full 500-venue API response", () => {
+  const fresh = Array.from({ length: 500 }, (_, i) =>
+    venue({ id: `osm-${i}`, fromOsm: true, lat: -23.5 - i / 10000 })
+  );
+  assert.equal(mergeExternalVenues([], fresh).length, 500);
 });
 
 test("mergeExternalVenues dedupes by place preferring user-added, then priced, then newer", () => {
@@ -187,4 +202,43 @@ test("extractNeighborhoods trims, dedupes, drops empty names and sorts in pt-BR 
     venue({ id: "5", neighborhood: "Água Vermelha" }),
   ];
   assert.deepEqual(extractNeighborhoods(venues), ["Água Vermelha", "Centro", "Vila Prado"]);
+});
+
+const VIEW = { south: -23.6, west: -46.7, north: -23.5, east: -46.6 };
+const VIEW_REQUEST = { south: -23.6125, west: -46.7125, north: -23.4875, east: -46.5875 };
+const ZOOMED_IN = { south: -23.57, west: -46.67, north: -23.53, east: -46.63 };
+
+test("VenueBboxCache answers views inside a complete response without refetching", () => {
+  const cache = new VenueBboxCache(5);
+  const cached = [venue({ id: "a", fromOsm: true })];
+  cache.set(VIEW, VIEW_REQUEST, { venues: cached, truncated: false });
+  assert.deepEqual(cache.get(VIEW), { venues: cached, truncated: false });
+  assert.deepEqual(cache.get(ZOOMED_IN), { venues: cached, truncated: false });
+  // Outside the fetched area: must request.
+  assert.equal(cache.get({ ...ZOOMED_IN, north: -23.48 }), undefined);
+});
+
+test("VenueBboxCache never treats a truncated response as complete for a zoomed-in view", () => {
+  const cache = new VenueBboxCache(5);
+  const cached = [venue({ id: "a", fromOsm: true })];
+  cache.set(VIEW, VIEW_REQUEST, { venues: cached, truncated: true });
+  // Same view: reuse it, still flagged so the "zoom in" hint stays.
+  assert.deepEqual(cache.get(VIEW), { venues: cached, truncated: true });
+  assert.equal(cache.get(ZOOMED_IN), undefined);
+
+  // The zoomed-in fetch is complete and then serves itself.
+  cache.set(ZOOMED_IN, ZOOMED_IN, { venues: [], truncated: false });
+  assert.deepEqual(cache.get(ZOOMED_IN), { venues: [], truncated: false });
+});
+
+test("VenueBboxCache evicts the oldest entry when full", () => {
+  const cache = new VenueBboxCache(2);
+  const at = (lat: number) => ({ south: lat, west: -46.7, north: lat + 0.01, east: -46.69 });
+  cache.set(at(-23.0), at(-23.0), { venues: [], truncated: true });
+  cache.set(at(-23.1), at(-23.1), { venues: [], truncated: true });
+  cache.set(at(-23.2), at(-23.2), { venues: [], truncated: true });
+  assert.equal(cache.size, 2);
+  assert.equal(cache.get(at(-23.0)), undefined);
+  assert.ok(cache.get(at(-23.1)));
+  assert.ok(cache.get(at(-23.2)));
 });
