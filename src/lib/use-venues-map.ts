@@ -15,10 +15,10 @@ import { attachMapHandle, type MapHandle } from "@/lib/mapHandle";
 import { getAccessToken } from "@/lib/supabase-browser";
 import {
   apiVenueToVenue,
-  bboxCacheKey,
   boundsFromCenterAndZoom,
   isFromExternal,
   mergeExternalVenues,
+  VenueBboxCache,
 } from "@/lib/venue-state";
 import type { Venue } from "@/types";
 
@@ -55,8 +55,10 @@ export function useVenuesMap() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [osmLoadState, setOsmLoadState] = useState<OsmLoadState>("idle");
   const [osmError, setOsmError] = useState<string | null>(null);
+  /** The last loaded view hit the API cap: some bars in it are not shown until the user zooms in. */
+  const [venuesTruncated, setVenuesTruncated] = useState(false);
   const osmRequestIdRef = useRef(0);
-  const osmCacheRef = useRef(new globalThis.Map<string, Venue[]>());
+  const osmCacheRef = useRef(new VenueBboxCache(PLACES_CACHE_MAX_ENTRIES));
   const lastOverpassRequestTimeRef = useRef(0);
   const autoLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBoundsForAutoLoadRef = useRef<{ bounds: Bounds; zoom: number } | null>(null);
@@ -78,16 +80,16 @@ export function useVenuesMap() {
         return;
       }
 
-      const bboxKey = bboxCacheKey(bounds);
       const cache = osmCacheRef.current;
 
       const mergeExternalIntoState = (newVenues: Venue[]) => {
         setVenues((prev) => mergeExternalVenues(prev, newVenues));
       };
 
-      if (cache.has(bboxKey)) {
-        const cached = cache.get(bboxKey)!;
-        mergeExternalIntoState(cached);
+      const cached = cache.get(bounds);
+      if (cached) {
+        mergeExternalIntoState(cached.venues);
+        setVenuesTruncated(cached.truncated);
         setOsmLoadState("success");
         setOsmError(null);
         return;
@@ -110,20 +112,17 @@ export function useVenuesMap() {
       const requestBounds = expandBounds(bounds, OVERSCAN_FACTOR);
 
       fetchVenuesInBounds(requestBounds)
-        .then((apiVenues) => {
+        .then(({ venues: apiVenues, truncated }) => {
           if (requestId !== osmRequestIdRef.current) return;
           const asVenues: Venue[] = apiVenues.map(apiVenueToVenue);
           mergeExternalIntoState(asVenues);
+          setVenuesTruncated(truncated);
           setOsmLoadState("success");
-
-          if (cache.size >= PLACES_CACHE_MAX_ENTRIES) {
-            const firstKey = cache.keys().next().value;
-            if (firstKey != null) cache.delete(firstKey);
-          }
-          cache.set(bboxKey, asVenues);
+          cache.set(bounds, requestBounds, { venues: asVenues, truncated });
         })
         .catch((e) => {
           if (requestId !== osmRequestIdRef.current) return;
+          setVenuesTruncated(false);
           setOsmLoadState("error");
           setOsmError(loadVenuesErrorMessage(e));
         });
@@ -163,6 +162,7 @@ export function useVenuesMap() {
           lastBoundsForAutoLoadRef.current = null;
           setVenues((prev) => prev.filter((v) => !isFromExternal(v)));
           setOsmError(null);
+          setVenuesTruncated(false);
           setOsmLoadState("idle");
         }
         return;
@@ -326,6 +326,7 @@ export function useVenuesMap() {
     userLocation,
     osmLoadState,
     osmError,
+    venuesTruncated,
     mapHandleRef,
     tryLoadPlacesForBounds,
     handleMapBoundsChange,

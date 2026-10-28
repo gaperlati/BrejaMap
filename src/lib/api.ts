@@ -81,13 +81,22 @@ async function throwIfNotOk(res: Response): Promise<Record<string, unknown>> {
   return body;
 }
 
-export async function fetchVenuesInBounds(bounds: Bounds): Promise<VenueFromAPI[]> {
+export interface VenuesInBounds {
+  venues: VenueFromAPI[];
+  /** The area holds more venues than the API returned (it caps each response). */
+  truncated: boolean;
+}
+
+export async function fetchVenuesInBounds(bounds: Bounds): Promise<VenuesInBounds> {
   const params = new URLSearchParams({
     bounds: [bounds.south, bounds.west, bounds.north, bounds.east].join(","),
   });
   const res = await fetch(`/api/venues?${params}`);
   const body = await throwIfNotOk(res);
-  return (body.venues as VenueFromAPI[] | undefined) ?? [];
+  return {
+    venues: (body.venues as VenueFromAPI[] | undefined) ?? [],
+    truncated: body.truncated === true,
+  };
 }
 
 /**

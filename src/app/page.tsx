@@ -34,6 +34,7 @@ export default function Home() {
     userLocation,
     osmLoadState,
     osmError,
+    venuesTruncated,
     handleMapBoundsChange,
     handleMapReady,
     handleLoadPlacesBars,
@@ -127,6 +128,7 @@ export default function Home() {
             onLoadOsmBars={handleLoadPlacesBars}
             osmLoadState={osmLoadState}
             osmError={osmError}
+            venuesTruncated={venuesTruncated}
           />
         </div>
       </header>

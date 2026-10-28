@@ -32,6 +32,7 @@ Read this section first to resume work in a new session; keep it current when th
 - BrejaMap is a crowdsourced map of beer prices in bars (Brazil, starting in São Carlos/SP).
 - Stack: Next.js 15.5 (App Router) + React 19 + TypeScript + Tailwind CSS + Google Maps (`@react-google-maps/api`) + Supabase Postgres (project `marksrnjlviagfteprbd`).
 - Production: https://brejamap.vercel.app (Vercel).
+- Known limit: GET /api/venues returns at most 500 venues per bbox (priced, then user-added, then nearest to the centre) with `truncated: true` and a "zoom in" hint when the area holds more; see docs/features.md §3.1.
 
 ### Single source of truth files
 

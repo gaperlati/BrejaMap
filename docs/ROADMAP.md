@@ -49,6 +49,7 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 - [x] Busca de endereço (Nominatim) com rótulos limpos, deduplicação, priorização de SP + proximidade e zoom dinâmico por tipo de local.
 - [x] Agrupamento inteligente (clustering) de marcadores no mapa priorizando o menor preço e pinos compactos para bares sem preço.
 - [x] Remoção do fallback de geolocalização por IP que movia o mapa para São Paulo capital após 8 segundos.
+- [x] GET `/api/venues` pronto para áreas densas (ex.: ~700 bares na capital): preços embutidos na consulta (sem URL gigante de ids), corte em 500 priorizando bares com preço, depois adicionados por usuários e depois os mais próximos do centro, campo `truncated` e aviso “Dê mais zoom para ver todos os bares desta área”; ver [features.md](./features.md) seção 3.1
 - [x] Login com Google via Google Identity Services + `signInWithIdToken` (a janela do Google mostra o domínio do BrejaMap, não `supabase.co`), com fallback para o redirecionamento OAuth; página `/privacidade`. Pendente (dono): origens JavaScript autorizadas e Branding no Google Cloud, `NEXT_PUBLIC_GOOGLE_CLIENT_ID` no Vercel.
 
 ### Qualidade

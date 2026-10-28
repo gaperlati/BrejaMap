@@ -1,7 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase-server";
-import type { Venue } from "@/types";
 import {
   type VenueRow,
   type BeerPriceRow,
@@ -17,7 +16,9 @@ import {
   MAX_HAPPY_HOUR_DETAILS_LEN,
   MAX_BOUNDS_SPAN_DEG,
   MAX_VENUES_PER_REQUEST,
+  MAX_VENUE_CANDIDATES_PER_TIER,
 } from "@/lib/venue-server";
+import { dedupeVenuesByPlace, selectVenuesForBounds } from "@/lib/venue-selection";
 import { buildCreateVenueArgs, runVenueWrite } from "@/lib/venue-writes";
 import {
   authenticateRequest,
@@ -25,21 +26,6 @@ import {
   createRateLimitChecks,
   rateLimitSalt,
 } from "@/lib/write-guards";
-
-function venueDedupKey(venue: Venue): string {
-  const normalizedName = venue.name.trim().toLowerCase();
-  // ~1m precision to collapse duplicated rows for same place
-  const latKey = venue.lat.toFixed(5);
-  const lngKey = venue.lng.toFixed(5);
-  return `${normalizedName}|${latKey}|${lngKey}`;
-}
-
-function pickPreferredVenue(current: Venue, candidate: Venue): Venue {
-  // Prefer user-added rows, then rows with beer prices, then most recent row.
-  const score = (v: Venue): number =>
-    (v.userAdded ? 100 : 0) + (v.beerPrices.length > 0 ? 10 : 0) + Date.parse(v.createdAt);
-  return score(candidate) >= score(current) ? candidate : current;
-}
 
 /**
  * GET /api/venues?bounds=south,west,north,east
@@ -75,54 +61,59 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { data: venueRows, error: venuesError } = await supabase
-    .from("venues")
-    .select("*")
-    .gte("lat", south)
-    .lte("lat", north)
-    .gte("lng", west)
-    .lte("lng", east)
-    .order("created_at", { ascending: true })
-    .limit(MAX_VENUES_PER_REQUEST);
-
-  if (venuesError) {
-    console.error("Supabase venues error:", venuesError);
-    return NextResponse.json(
-      { error: "Failed to load venues", venues: [] },
-      { status: 500 }
-    );
-  }
-
-  const ids = (venueRows ?? []).map((r: VenueRow) => r.id);
-  if (ids.length === 0) {
-    return NextResponse.json({ venues: [] });
-  }
-
-  const { data: priceRows, error: pricesError } = await supabase
-    .from("beer_prices")
-    .select("*")
-    .in("venue_id", ids);
-
-  if (pricesError) {
-    console.error("Supabase beer_prices error:", pricesError);
-    return NextResponse.json(
-      { error: "Failed to load venues", venues: [] },
-      { status: 500 }
-    );
-  }
-
-  const mappedVenues: Venue[] = (venueRows ?? []).map((row: VenueRow) =>
-    rowToVenue(row, (priceRows ?? []) as BeerPriceRow[])
+  // Prices come embedded with each venue (beer_prices.venue_id FK), so no `.in(venue_id, ...)`
+  // list with hundreds of ids ever goes into the URL. One bounded query per priority tier:
+  // priced venues, user-added venues, then the rest. Each returns at most
+  // MAX_VENUE_CANDIDATES_PER_TIER rows plus an exact count, so the final ranking by
+  // tier + distance happens here without ever loading an unbounded number of rows.
+  const db = supabase;
+  const inBounds = (select: string) =>
+    db
+      .from("venues")
+      .select(select, { count: "exact" })
+      .gte("lat", south)
+      .lte("lat", north)
+      .gte("lng", west)
+      .lte("lng", east);
+  const tierQueries = [
+    inBounds("*, beer_prices!inner(*)"),
+    inBounds("*, beer_prices(*)").eq("user_added", true),
+    inBounds("*, beer_prices(*)").eq("user_added", false),
+  ].map((query) =>
+    query.order("created_at", { ascending: false }).limit(MAX_VENUE_CANDIDATES_PER_TIER)
   );
-  const dedupedByPlace = new Map<string, Venue>();
-  for (const venue of mappedVenues) {
-    const key = venueDedupKey(venue);
-    const current = dedupedByPlace.get(key);
-    dedupedByPlace.set(key, current ? pickPreferredVenue(current, venue) : venue);
-  }
-  const venues = Array.from(dedupedByPlace.values());
+  const results = await Promise.all(tierQueries);
 
-  return NextResponse.json({ venues });
+  const failed = results.find((r) => r.error);
+  if (failed) {
+    console.error("Supabase venues error:", failed.error);
+    return NextResponse.json(
+      { error: "Failed to load venues", venues: [] },
+      { status: 500 }
+    );
+  }
+
+  type VenueWithPricesRow = VenueRow & { beer_prices: BeerPriceRow[] | null };
+  const rowsById = new Map<string, VenueWithPricesRow>();
+  let moreInDatabase = false;
+  for (const { data, count } of results) {
+    const rows = (data ?? []) as unknown as VenueWithPricesRow[];
+    if (count != null && count > rows.length) moreInDatabase = true;
+    // Priced venues also show up in the user_added tiers; the first copy is as good as any.
+    for (const row of rows) if (!rowsById.has(row.id)) rowsById.set(row.id, row);
+  }
+
+  const mappedVenues = Array.from(rowsById.values()).map((row) =>
+    rowToVenue(row, row.beer_prices ?? [])
+  );
+  const { venues, truncated } = selectVenuesForBounds(
+    dedupeVenuesByPlace(mappedVenues),
+    { south, west, north, east },
+    MAX_VENUES_PER_REQUEST,
+    moreInDatabase
+  );
+
+  return NextResponse.json({ venues, truncated });
 }
 
 /**

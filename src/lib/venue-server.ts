@@ -26,8 +26,13 @@ const SP_STATE_BOUNDS = { south: -25.5, north: -19.5, west: -53.3, east: -44.0 }
 
 /** Largest bbox (in degrees per side) a GET may request; the map only asks at zoom >= 12. */
 export const MAX_BOUNDS_SPAN_DEG = 2;
-/** Hard cap on rows returned by GET. */
+/** Hard cap on venues returned by GET (priced first, then user-added, then nearest). */
 export const MAX_VENUES_PER_REQUEST = 500;
+/**
+ * Rows fetched per priority tier before ranking (Supabase's default PostgREST max-rows is 1000).
+ * A tier with more rows than this in the bbox only ranks the newest ones by distance.
+ */
+export const MAX_VENUE_CANDIDATES_PER_TIER = 1000;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
