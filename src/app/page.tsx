@@ -113,6 +113,7 @@ export default function Home() {
             <AddressSearch
               onSelectLocation={handleSearchLocation}
               placeholder="Pesquisar endereço"
+              biasLocation={userLocation ?? mapCenter}
             />
           </div>
         </div>

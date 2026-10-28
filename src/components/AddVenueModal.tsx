@@ -2,7 +2,12 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { Venue, BeerType, BeerPrice } from "@/types";
-import { searchAddress, type NominatimResult } from "@/lib/geocode";
+import {
+  extractNominatimAddress,
+  formatNominatimResult,
+  searchAddress,
+  type NominatimResult,
+} from "@/lib/geocode";
 import { getAccessToken, getSupabaseBrowser } from "@/lib/supabase-browser";
 import { useAuthUser } from "@/lib/use-auth-user";
 import { LoginCard } from "@/components/LoginCard";
@@ -78,7 +83,9 @@ export function AddVenueModal({
     }
     setLocationLoading(true);
     try {
-      const data = await searchAddress(q);
+      const data = await searchAddress(q, {
+        biasLocation: { lat: initialLat, lng: initialLng },
+      });
       setLocationResults(data);
       setLocationOpen(true);
     } catch {
@@ -86,7 +93,7 @@ export function AddVenueModal({
     } finally {
       setLocationLoading(false);
     }
-  }, []);
+  }, [initialLat, initialLng]);
 
   const handleLocationChange = (value: string) => {
     setLocationQuery(value);
@@ -107,14 +114,13 @@ export function AddVenueModal({
       setLat(latNum);
       setLng(lngNum);
     }
-    setAddress(r.display_name);
-    const addr = r.address;
-    if (addr) {
-      setNeighborhood(addr.suburb ?? addr.neighbourhood ?? addr.quarter ?? "");
-      setCity(addr.city ?? addr.town ?? addr.village ?? "");
-      setState(addr.state ?? "SP");
-    }
-    setLocationQuery(r.display_name);
+    const formatted = formatNominatimResult(r);
+    const parts = extractNominatimAddress(r);
+    setAddress(parts.street ?? formatted.title);
+    setNeighborhood(parts.neighborhood ?? "");
+    setCity(parts.city ?? "");
+    setState(parts.stateCode && parts.stateCode.length === 2 ? parts.stateCode : "SP");
+    setLocationQuery(formatted.shortLabel);
     setLocationResults([]);
     setLocationOpen(false);
     setLocationSelected(true);
@@ -278,17 +284,25 @@ export function AddVenueModal({
                 )}
                 {locationOpen && locationResults.length > 0 && (
                   <ul className="absolute top-full left-0 right-0 mt-1 py-1 rounded-lg bg-stone-800 border border-stone-700 shadow-xl z-50 max-h-48 overflow-y-auto">
-                    {locationResults.map((r) => (
-                      <li
-                        key={r.place_id}
-                        role="option"
-                        aria-selected={false}
-                        onClick={() => handleLocationSelect(r)}
-                        className="px-3 py-2 text-sm text-stone-200 hover:bg-stone-700 cursor-pointer border-b border-stone-700/50 last:border-0"
-                      >
-                        <span className="block truncate">{r.display_name}</span>
-                      </li>
-                    ))}
+                    {locationResults.map((r) => {
+                      const formatted = formatNominatimResult(r);
+                      return (
+                        <li
+                          key={r.place_id}
+                          role="option"
+                          aria-selected={false}
+                          onClick={() => handleLocationSelect(r)}
+                          className="px-3 py-2 text-sm text-stone-200 hover:bg-stone-700 cursor-pointer border-b border-stone-700/50 last:border-0"
+                        >
+                          <span className="block truncate text-stone-100">{formatted.title}</span>
+                          {formatted.subtitle && (
+                            <span className="block truncate text-xs text-stone-500">
+                              {formatted.subtitle}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>

@@ -44,11 +44,20 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 ## 2. Pesquisar endereço
 
 - Campo de busca no header: “Pesquisar endereço”.
-- Busca com **Nominatim (OpenStreetMap)**, restrita ao Brasil (`countrycodes=br`, resultados em pt-BR); resultados em dropdown (debounce 400 ms).
-- Ao selecionar um resultado: mapa centraliza no local e aplica zoom 15; marcador de busca é exibido.
+- Busca com **Nominatim (OpenStreetMap)** em todo o Brasil (`countrycodes=br`, resultados em pt-BR, `limit=12`, `dedupe=1`); resultados em dropdown (debounce 400 ms), no máximo 6.
+- **Preferência por SP sem excluir o resto do país**: `viewbox` cobrindo o estado de São Paulo com `bounded=0`, então cidades de outros estados continuam aparecendo, só que abaixo.
+- **Ranking no cliente** (`rankNominatimResults`): título exato ou prefixo da busca (sem diferenciar acentos, “sao carlos” = “São Carlos”) > resultados no **estado de SP** > proximidade da localização do usuário (ou do centro do mapa, via `biasLocation`) > tipo do lugar (cidade, bairro, rua e bar acima de povoados e limites administrativos) e `importance` do Nominatim. Ex.: “São Carlos” mostra São Carlos (SP) em 1º, e São Carlos (SC) e São Carlos (Rosário do Sul, RS) logo abaixo.
+- **Deduplicação** (`dedupeNominatimResults`): o nó da cidade e a relação do limite administrativo da mesma cidade viram um único resultado (mesmo título + cidade + UF + tipo). Ruas/bares homônimos só são unidos se estiverem a até ~1 km.
+- **Rótulos limpos** (`formatNominatimResult`): título em destaque + subtítulo, sem “Região Sudeste”, “Região Geográfica…”, CEP ou “Brasil”, e sem repetir o título no subtítulo:
+  - Cidade: “São Carlos” / “São Paulo, SP”; povoado mostra o município (“Rosário do Sul, RS”).
+  - Bairro: “Centro” / “São Carlos, SP”.
+  - Rua: “Av. São Carlos, 2100” / “Centro · São Carlos - SP”; local (bar etc.): nome do local / rua + bairro + cidade.
+- **Zoom conforme o tipo**: ao selecionar, o mapa centraliza com zoom **13** (cidade), **14** (bairro) ou **16** (rua/local); marcador de busca é exibido e o campo mostra um rótulo curto (ex.: “São Carlos, SP”).
+- **Adicionar bar**: a busca de localização do modal usa o mesmo ranking (proximidade do centro do mapa) e os mesmos rótulos; ao selecionar, preenche Endereço com rua + número (ou o título do resultado), Bairro, Cidade e a UF com 2 letras (ex.: `SP`).
 - Placeholder configurável.
+- Testes: `src/lib/geocode.test.ts` (em `npm run test:scripts`).
 
-**Arquivos**: `src/components/AddressSearch.tsx`, `src/lib/geocode.ts`.
+**Arquivos**: `src/components/AddressSearch.tsx`, `src/components/AddVenueModal.tsx`, `src/lib/geocode.ts`, `src/lib/geo.ts`.
 
 ---
 
