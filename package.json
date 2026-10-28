@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "next lint",
     "import:osm": "tsx scripts/import-osm.ts",
-    "test:scripts": "tsx --test scripts/osm-import.test.ts src/lib/venue-writes.test.ts src/lib/write-guards.test.ts src/lib/venue-state.test.ts src/lib/geocode.test.ts"
+    "test:scripts": "tsx --test scripts/osm-import.test.ts src/lib/venue-writes.test.ts src/lib/write-guards.test.ts src/lib/venue-state.test.ts src/lib/geocode.test.ts src/lib/map-markers.test.ts"
   },
   "dependencies": {
     "@react-google-maps/api": "^2.19.0",
