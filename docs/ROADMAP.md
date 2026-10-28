@@ -43,6 +43,9 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 - [x] Meta tags e Open Graph: título, descrição, imagem para compartilhamento em redes sociais (atualizar `src/app/layout.tsx`)
 - [x] Error boundaries ou tratamento gracioso: map/API failures devem mostrar mensagem clara ao usuário, não tela em branco
 - [x] "Minha conta" na navegação: oculto até pós-release (a barra inferior só tem Mapa e Adicionar bar)
+- [x] Busca de endereço (Nominatim) com rótulos limpos, deduplicação, priorização de SP + proximidade e zoom dinâmico por tipo de local.
+- [x] Agrupamento inteligente (clustering) de marcadores no mapa priorizando o menor preço e pinos compactos para bares sem preço.
+- [x] Remoção do fallback de geolocalização por IP que movia o mapa para São Paulo capital após 8 segundos.
 
 ### Qualidade
 
@@ -72,6 +75,11 @@ Checkpoint: app está no ar e acessível; equipe pode monitorar e reagir.
 ## Pós-release (v1.x / próximas features)
 
 Backlog de features priorizadas com base em [MGB_FEATURES_AND_BRAZIL.md](../MGB_FEATURES_AND_BRAZIL.md) e necessidades do mercado brasileiro.
+
+### Próximas features (prioridade máxima)
+
+1. **Frescor de preços ("atualizado há X dias" + confirmação "Ainda é esse preço?")**: coluna `updated_at` nos preços, rótulo "atualizado há X dias" no sheet/card e botão "Ainda é esse preço? Sim/Não" para a comunidade confirmar ou corrigir.
+2. **Foto do cardápio → preços (extração via IA com confirmação no formulário)**: o usuário envia uma foto do cardápio, a IA (via Vercel AI Gateway) extrai `{tipo, marca, preço}` e o formulário de preços já vem preenchido para o usuário revisar e confirmar.
 
 ### Alta prioridade (ordem ajustável)
 
