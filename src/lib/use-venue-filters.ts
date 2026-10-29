@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { Bounds } from "@/lib/geo";
 import {
   extractNeighborhoods,
   filterAndSortVenues,
   filterVenuesInBounds,
+  getMatchingMinPrice,
+  matchingBeerPrices,
 } from "@/lib/venue-state";
 import type { BeerType, PriceFilter, SortOption, Venue } from "@/types";
 
@@ -56,6 +58,16 @@ export function useVenueFilters({
     [venues, mapBounds, maxPrice, beerType, neighborhood, happyHourOnly, sort, userLocation, mapCenter]
   );
 
+  // Price shown for a venue in the list and on the map: only beers matching type and budget.
+  const getMatchingPrices = useCallback(
+    (venue: Venue) => matchingBeerPrices(venue, { beerType, maxPrice }),
+    [beerType, maxPrice]
+  );
+  const getMinPrice = useCallback(
+    (venue: Venue) => getMatchingMinPrice(venue, { beerType, maxPrice }),
+    [beerType, maxPrice]
+  );
+
   return {
     maxPrice,
     setMaxPrice,
@@ -73,5 +85,7 @@ export function useVenueFilters({
     neighborhoods,
     hasActiveFilters,
     filteredAndSortedVenues,
+    getMatchingPrices,
+    getMinPrice,
   };
 }

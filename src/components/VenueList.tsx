@@ -1,6 +1,6 @@
 "use client";
 
-import type { Venue, BeerType } from "@/types";
+import type { BeerPrice, BeerType, Venue } from "@/types";
 import { VenueCard } from "./VenueCard";
 
 interface VenueListProps {
@@ -10,6 +10,8 @@ interface VenueListProps {
   selectedVenueId: string | null;
   onSelectVenue: (id: string | null) => void;
   beerTypeLabels: Record<BeerType, string>;
+  /** Prices shown on each card (those matching the active filters). */
+  getPrices: (v: Venue) => BeerPrice[];
   getMinPrice: (v: Venue) => number;
   /** When provided and list is empty due to no venues, show CTA to add first bar. */
   onAddBar?: () => void;
@@ -21,6 +23,7 @@ export function VenueList({
   selectedVenueId,
   onSelectVenue,
   beerTypeLabels,
+  getPrices,
   getMinPrice,
   onAddBar,
 }: VenueListProps) {
@@ -61,6 +64,7 @@ export function VenueList({
                 isSelected={venue.id === selectedVenueId}
                 onSelect={() => onSelectVenue(venue.id)}
                 beerTypeLabels={beerTypeLabels}
+                prices={getPrices(venue)}
                 minPrice={getMinPrice(venue)}
               />
             </li>

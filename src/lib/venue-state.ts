@@ -5,7 +5,7 @@
  * Kept free of React/Next/browser imports so it can be tested with `node --test`.
  */
 
-import type { BeerType, PriceFilter, SortOption, Venue } from "../types";
+import type { BeerPrice, BeerType, PriceFilter, SortOption, Venue } from "../types";
 import type { VenueFromAPI } from "./api";
 import { distanceKm, expandBounds, type Bounds } from "./geo";
 
@@ -108,6 +108,47 @@ export function getMinBeerPrice(venue: Venue): number {
   return Math.min(...venue.beerPrices.map((p) => p.priceBRL));
 }
 
+/** Beer type and budget selected in the filters; empty/null fields match any beer. */
+export interface BeerPriceCriteria {
+  beerType: BeerType | "";
+  maxPrice: PriceFilter;
+}
+
+export const NO_PRICE_CRITERIA: BeerPriceCriteria = { beerType: "", maxPrice: null };
+
+export function hasPriceCriteria(criteria: BeerPriceCriteria): boolean {
+  return criteria.beerType !== "" || criteria.maxPrice != null;
+}
+
+/**
+ * The venue's beers that satisfy every price criterion at once (type and budget), so a
+ * cheap chope does not qualify a bar when the user asked for bottles under a budget.
+ * Without criteria this is the full price list.
+ */
+export function matchingBeerPrices(venue: Venue, criteria: BeerPriceCriteria): BeerPrice[] {
+  if (!hasPriceCriteria(criteria)) return venue.beerPrices;
+  const { beerType, maxPrice } = criteria;
+  return venue.beerPrices.filter(
+    (p) => (!beerType || p.type === beerType) && (maxPrice == null || p.priceBRL <= maxPrice)
+  );
+}
+
+/** Lowest price among the matching beers (`Infinity` when none matches). */
+export function getMatchingMinPrice(venue: Venue, criteria: BeerPriceCriteria): number {
+  const prices = matchingBeerPrices(venue, criteria);
+  if (prices.length === 0) return Infinity;
+  return Math.min(...prices.map((p) => p.priceBRL));
+}
+
+/** Price order where venues without a (matching) price always go last. */
+function comparePrices(a: number, b: number, direction: 1 | -1): number {
+  const aPriced = Number.isFinite(a);
+  const bPriced = Number.isFinite(b);
+  if (aPriced !== bPriced) return aPriced ? -1 : 1;
+  if (!aPriced) return 0;
+  return (a - b) * direction;
+}
+
 export function apiVenueToVenue(v: VenueFromAPI): Venue {
   return {
     ...v,
@@ -198,16 +239,17 @@ export interface VenueFilterOptions {
   mapCenter: { lat: number; lng: number };
 }
 
-/** Venues visible on the map that pass the filters, in the requested order. */
+/**
+ * Venues visible on the map that pass the filters, in the requested order. Type and budget
+ * must be met by the same beer; price sorting uses the cheapest matching beer.
+ */
 export function filterAndSortVenues(venues: Venue[], options: VenueFilterOptions): Venue[] {
   const { maxPrice, beerType, neighborhood, happyHourOnly, sort } = options;
+  const criteria: BeerPriceCriteria = { beerType, maxPrice };
   let list = filterVenuesInBounds(venues, options.mapBounds);
 
-  if (maxPrice != null) {
-    list = list.filter((v) => getMinBeerPrice(v) <= maxPrice);
-  }
-  if (beerType) {
-    list = list.filter((v) => v.beerPrices.some((p) => p.type === beerType));
+  if (hasPriceCriteria(criteria)) {
+    list = list.filter((v) => matchingBeerPrices(v, criteria).length > 0);
   }
   if (neighborhood) {
     list = list.filter(
@@ -218,10 +260,10 @@ export function filterAndSortVenues(venues: Venue[], options: VenueFilterOptions
     list = list.filter((v) => v.hasHappyHour);
   }
 
-  if (sort === "price_asc") {
-    list.sort((a, b) => getMinBeerPrice(a) - getMinBeerPrice(b));
-  } else if (sort === "price_desc") {
-    list.sort((a, b) => getMinBeerPrice(b) - getMinBeerPrice(a));
+  if (sort === "price_asc" || sort === "price_desc") {
+    const direction = sort === "price_asc" ? 1 : -1;
+    const price = new Map(list.map((v) => [v, getMatchingMinPrice(v, criteria)]));
+    list.sort((a, b) => comparePrices(price.get(a)!, price.get(b)!, direction));
   } else if (sort === "name") {
     list.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   } else if (sort === "distance") {

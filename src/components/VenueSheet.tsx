@@ -9,6 +9,7 @@ interface VenueSheetProps {
   onClose: () => void;
   beerTypeLabels: Record<BeerType, string>;
   getMinPrice: (v: Venue) => number;
+  priceTypeLabel?: string;
   onAddPrices?: (venue: Venue) => void;
   /** Flags the venue's prices as wrong; rejects on failure. */
   onReportPrices?: (venue: Venue) => Promise<void>;
@@ -64,6 +65,7 @@ export function VenueSheet({
   onClose,
   beerTypeLabels,
   getMinPrice,
+  priceTypeLabel,
   onAddPrices,
   onReportPrices,
 }: VenueSheetProps) {
@@ -144,7 +146,9 @@ export function VenueSheet({
           </div>
 
           <p className="text-amber-400 font-semibold mt-3">
-            {hasPrices ? `A partir de R$ ${minPrice.toFixed(2)}` : "—"}
+            {hasPrices
+              ? `${priceTypeLabel ? `${priceTypeLabel} — a` : "A"} partir de R$ ${minPrice.toFixed(2)}`
+              : "—"}
           </p>
           {venue.hasHappyHour && venue.happyHourDetails && (
             <p className="text-stone-400 text-sm mt-1">

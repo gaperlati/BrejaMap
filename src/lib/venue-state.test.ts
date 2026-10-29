@@ -9,8 +9,11 @@ import {
   bboxCacheKey,
   extractNeighborhoods,
   filterAndSortVenues,
+  getMatchingMinPrice,
   getMinBeerPrice,
+  matchingBeerPrices,
   mergeExternalVenues,
+  NO_PRICE_CRITERIA,
   VenueBboxCache,
   type VenueFilterOptions,
 } from "./venue-state";
@@ -33,6 +36,7 @@ function venue(overrides: Partial<Venue> & { id: string }): Venue {
 
 const chope = (priceBRL: number) => ({ type: "chope" as const, label: "Chope", priceBRL });
 const lata = (priceBRL: number) => ({ type: "lata" as const, label: "Lata", priceBRL });
+const garrafa = (priceBRL: number) => ({ type: "garrafa" as const, label: "Garrafa", priceBRL });
 
 const BOUNDS = { south: -22.1, west: -48.0, north: -21.9, east: -47.8 };
 
@@ -163,7 +167,7 @@ test("filterAndSortVenues sorts by price, name and distance", () => {
   const all = [pricey, noPrice, cheap];
 
   assert.deepEqual(ids(filterAndSortVenues(all, options({ sort: "price_asc" }))), ["cheap", "pricey", "none"]);
-  assert.deepEqual(ids(filterAndSortVenues(all, options({ sort: "price_desc" }))), ["none", "pricey", "cheap"]);
+  assert.deepEqual(ids(filterAndSortVenues(all, options({ sort: "price_desc" }))), ["pricey", "cheap", "none"]);
   assert.deepEqual(ids(filterAndSortVenues(all, options({ sort: "name" }))), ["pricey", "none", "cheap"]);
 
   // Distance uses the map center when the user location is unknown...
@@ -185,6 +189,89 @@ test("filterAndSortVenues sorts by price, name and distance", () => {
     ),
     ["pricey", "none", "cheap"]
   );
+});
+
+// São Carlos venues from the live bug report: Garrafa up to R$ 10 used to keep both bars
+// because their chope fit the budget.
+const cantinho = venue({ id: "cantinho", beerPrices: [garrafa(14.5), chope(7.9)] });
+const beco = venue({ id: "beco", beerPrices: [garrafa(15), chope(8.2)] });
+const boteco = venue({ id: "boteco", beerPrices: [chope(6), garrafa(9.5), garrafa(12)] });
+const unpriced = venue({ id: "unpriced" });
+const scVenues = [cantinho, beco, boteco, unpriced];
+
+test("filterAndSortVenues requires type and budget to match the same beer", () => {
+  assert.deepEqual(ids(filterAndSortVenues(scVenues, options({ beerType: "garrafa", maxPrice: 10 }))), [
+    "boteco",
+  ]);
+  assert.deepEqual(ids(filterAndSortVenues(scVenues, options({ beerType: "garrafa", maxPrice: 5 }))), []);
+  assert.deepEqual(ids(filterAndSortVenues(scVenues, options({ beerType: "chope", maxPrice: 8 }))), [
+    "boteco",
+    "cantinho",
+  ]);
+  // Budget alone accepts any beer type; type alone accepts any price.
+  assert.deepEqual(ids(filterAndSortVenues(scVenues, options({ maxPrice: 8 }))), ["boteco", "cantinho"]);
+  assert.deepEqual(ids(filterAndSortVenues(scVenues, options({ beerType: "garrafa" }))), [
+    "boteco",
+    "cantinho",
+    "beco",
+  ]);
+  assert.deepEqual(ids(filterAndSortVenues(scVenues, options({ beerType: "lata" }))), []);
+});
+
+test("filterAndSortVenues sorts by the cheapest matching beer", () => {
+  // Chope would order beco/cantinho by 7.90 vs 8.20; for garrafa it is 14.50 vs 15.
+  assert.deepEqual(
+    ids(filterAndSortVenues([beco, cantinho], options({ beerType: "garrafa", sort: "price_desc" }))),
+    ["beco", "cantinho"]
+  );
+  // Garrafa ranks boteco (9.50) first although the other bar has the cheaper chope.
+  const pricedBottle = venue({ id: "bottle", beerPrices: [chope(5), garrafa(13)] });
+  assert.deepEqual(
+    ids(filterAndSortVenues([pricedBottle, boteco], options({ beerType: "garrafa", sort: "price_asc" }))),
+    ["boteco", "bottle"]
+  );
+  assert.deepEqual(
+    ids(filterAndSortVenues([boteco, pricedBottle], options({ sort: "price_asc" }))),
+    ["bottle", "boteco"]
+  );
+});
+
+test("filterAndSortVenues keeps unpriced venues only without price filters, last when sorting by price", () => {
+  assert.deepEqual(ids(filterAndSortVenues(scVenues, options())), ["boteco", "cantinho", "beco", "unpriced"]);
+  assert.deepEqual(ids(filterAndSortVenues(scVenues, options({ sort: "price_desc" }))), [
+    "beco",
+    "cantinho",
+    "boteco",
+    "unpriced",
+  ]);
+  assert.equal(filterAndSortVenues(scVenues, options({ maxPrice: 100 })).includes(unpriced), false);
+  assert.equal(filterAndSortVenues(scVenues, options({ beerType: "chope" })).includes(unpriced), false);
+});
+
+test("filterAndSortVenues returns the original venues with every price for detail and edit", () => {
+  const [match] = filterAndSortVenues(scVenues, options({ beerType: "chope", maxPrice: 7 }));
+  assert.equal(match, boteco);
+  assert.equal(match.beerPrices.length, 3);
+});
+
+test("matchingBeerPrices and getMatchingMinPrice derive card chips and headline from matching beers", () => {
+  const criteria = { beerType: "garrafa" as const, maxPrice: 10 };
+  assert.deepEqual(matchingBeerPrices(boteco, criteria), [garrafa(9.5)]);
+  assert.equal(getMatchingMinPrice(boteco, criteria), 9.5);
+  assert.deepEqual(matchingBeerPrices(cantinho, criteria), []);
+  assert.equal(getMatchingMinPrice(cantinho, criteria), Infinity);
+
+  assert.deepEqual(matchingBeerPrices(cantinho, { beerType: "garrafa", maxPrice: null }), [garrafa(14.5)]);
+  assert.equal(getMatchingMinPrice(cantinho, { beerType: "garrafa", maxPrice: null }), 14.5);
+  assert.deepEqual(matchingBeerPrices(boteco, { beerType: "", maxPrice: 10 }), [chope(6), garrafa(9.5)]);
+  // A budget of R$ 0 is a real filter, not "any".
+  assert.deepEqual(matchingBeerPrices(boteco, { beerType: "", maxPrice: 0 }), []);
+
+  // Without criteria: the full list and the overall minimum, unchanged for unpriced venues.
+  assert.equal(matchingBeerPrices(cantinho, NO_PRICE_CRITERIA), cantinho.beerPrices);
+  assert.equal(getMatchingMinPrice(cantinho, NO_PRICE_CRITERIA), getMinBeerPrice(cantinho));
+  assert.deepEqual(matchingBeerPrices(unpriced, NO_PRICE_CRITERIA), []);
+  assert.equal(getMatchingMinPrice(unpriced, NO_PRICE_CRITERIA), Infinity);
 });
 
 test("filterAndSortVenues does not mutate the input list", () => {
