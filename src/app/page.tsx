@@ -13,7 +13,7 @@ import { FilterChips } from "@/components/FilterChips";
 import { VenueSheet } from "@/components/VenueSheet";
 import { MapLoadingPlaceholder } from "@/components/MapLoadingPlaceholder";
 import { REOPEN_ADD_VENUE_KEY } from "@/components/LoginCard";
-import { BEER_TYPE_LABELS, getMinBeerPrice } from "@/lib/venue-state";
+import { BEER_TYPE_LABELS } from "@/lib/venue-state";
 import { useVenuesMap } from "@/lib/use-venues-map";
 import { useVenueFilters } from "@/lib/use-venue-filters";
 
@@ -250,7 +250,8 @@ export default function Home() {
           venue={selectedVenue}
           onClose={() => setSelectedVenueId(null)}
           beerTypeLabels={BEER_TYPE_LABELS}
-          getMinPrice={getMinBeerPrice}
+          getMinPrice={getMatchingMinPrice}
+          priceTypeLabel={beerType ? BEER_TYPE_LABELS[beerType] : undefined}
           onAddPrices={(v) => setVenueToEditPrices(v)}
           onReportPrices={(v) => reportVenuePrices(v.id)}
         />
