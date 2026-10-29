@@ -285,6 +285,7 @@ export default function Home() {
         onSubmit={handleAddVenue}
         initialLat={mapCenter.lat}
         initialLng={mapCenter.lng}
+        initialZoom={mapZoom}
       />
     </div>
   );

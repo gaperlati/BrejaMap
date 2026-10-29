@@ -18,12 +18,6 @@ export const MAX_ADDRESS_FIELD_LEN = 200;
 const MAX_PRICE_BRL = 500;
 const MAX_VOLUME_ML = 5000;
 
-/**
- * Generous bounding box around São Paulo state. Writes outside it are rejected:
- * the app only targets SP, and it blocks junk coordinates (0,0 etc.).
- */
-const SP_STATE_BOUNDS = { south: -25.5, north: -19.5, west: -53.3, east: -44.0 };
-
 /** Largest bbox (in degrees per side) a GET may request; the map only asks at zoom >= 12. */
 export const MAX_BOUNDS_SPAN_DEG = 2;
 /** Hard cap on venues returned by GET (priced first, then user-added, then nearest). */
@@ -40,14 +34,8 @@ export function isUuid(value: string): boolean {
   return UUID_RE.test(value);
 }
 
-export function isInsideSpState(lat: number, lng: number): boolean {
-  return (
-    lat >= SP_STATE_BOUNDS.south &&
-    lat <= SP_STATE_BOUNDS.north &&
-    lng >= SP_STATE_BOUNDS.west &&
-    lng <= SP_STATE_BOUNDS.east
-  );
-}
+/** Shared with the client so "Adicionar bar" can warn before the server rejects the point. */
+export { isInsideSpState } from "@/lib/geo";
 
 /** Trimmed string, or "" when the value is missing / not a string. Truncated to maxLen. */
 export function cleanString(value: unknown, maxLen: number): string {
