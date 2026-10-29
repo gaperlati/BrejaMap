@@ -53,13 +53,31 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 - [x] Remoção do fallback de geolocalização por IP que movia o mapa para São Paulo capital após 8 segundos.
 - [x] GET `/api/venues` pronto para áreas densas (ex.: ~700 bares na capital): preços embutidos na consulta (sem URL gigante de ids), corte em 500 priorizando bares com preço, depois adicionados por usuários e depois os mais próximos do centro, campo `truncated` e aviso “Dê mais zoom para ver todos os bares desta área”; ver [features.md](./features.md) seção 3.1
 - [x] Login com Google via Google Identity Services + `signInWithIdToken` (a janela do Google mostra o domínio do BrejaMap, não `supabase.co`), com fallback para o redirecionamento OAuth; página `/privacidade`. Pendente (dono): origens JavaScript autorizadas e Branding no Google Cloud, `NEXT_PUBLIC_GOOGLE_CLIENT_ID` no Vercel.
+- [x] Textos de ajuda redundantes removidos dos modais “Adicionar bar” e “Editar preços” (“Tipo, marca … Use ‘Adicionar cerveja’ para mais opções.” / “Informe os preços que você conhece…”); rótulos, validação e acessibilidade dos campos mantidos.
+- [x] Chips do topo (Happy hour, Filtros, Buscar bares) quebram linha no celular em vez de cortar “Buscar bares” em 375 px (só CSS).
 - [x] “Adicionar bar” com escolha do local no mapa: pino fixo no centro de um mapa dentro do modal (arrastar ou tocar), botão “Usar minha localização” (só com ação do usuário), busca de endereço opcional que procura primeiro perto do pino (~15 km) e só depois no estado todo, endereço/bairro/cidade preenchidos pelo ponto (geocodificação reversa) e confirmação obrigatória (“Confirmar local”) antes de salvar; o endereço exato deixa de ser obrigatório. Ver [features.md](./features.md) seção 7
 
 ### Qualidade
 
 - [ ] Teste manual completo: adicionar bar, editar preços, busca, filtros, empty state em mobile e desktop
+  - Parcial (29/10/2026, produção, desktop + viewport mobile no navegador): validação de login ao adicionar bar e cancelamento dos modais passaram; nenhuma escrita foi feita. Bares de São Paulo apareceram no mapa, mas a passagem não comprova que todos os 682 importados estão visíveis. Ainda não testados: persistência (salvar bar/preços), geolocalização, rotas e teclado em aparelho real.
 - [x] Build de produção: `npm run build` sem erros críticos; verificar console no build de produção
 - [x] Atualizar Next.js 14 → 15 (15.5.x, com as correções de segurança) e React 18 → 19; `params` das rotas dinâmicas agora é assíncrono (`await params` em `PATCH /api/venues/[id]`)
+
+### Achados do teste com usuário (29/10/2026)
+
+Prioridade em ordem. Só os itens marcados foram resolvidos; as correções de filtro (P0) e da busca de cidade na lista estão em andamento em PRs separados.
+
+- [ ] **P0 — Filtro de tipo + preço máximo na mesma cerveja**: o preço máximo precisa valer para a cerveja do tipo escolhido, e o menor preço exibido, a ordenação, os pinos e os cards devem usar essa mesma cerveja. Hoje “Garrafa ≤ R$ 10” inclui bares com garrafa a R$ 14,50/15,00 porque o chope custa R$ 7,90/8,20.
+- [ ] **P1 — Busca de cidade na aba Lista**: ao escolher São Paulo, a lista continua mostrando São Carlos até voltar para a aba Mapa.
+- [ ] **P1 — Recuperar de filtros**: botão “Limpar filtros” e chips dos filtros ativos (ou contagem); hoje só existe um pontinho no chip “Filtros”.
+- [ ] **P1 — Mobile: primeiros resultados empurrados para baixo** pelo painel de filtros sempre aberto na aba Lista.
+- [x] **P1 — Mobile: chips do topo cortando “Buscar bares”** em 375 px (quebra de linha, só CSS).
+- [ ] **P1 — Clareza do preço exibido**: deixar claro qual tipo/tamanho de cerveja corresponde ao preço mostrado e há quanto tempo foi informado (frescor de preços continua sendo a próxima feature depois das correções).
+- [ ] **P1 — Formatação de moeda consistente em pt-BR** (`R$ 7,90` em pinos, cards, sheet e filtros); adiado para não conflitar com os PRs de filtro/lista em andamento.
+- [ ] **P1 — Ações do mapa mais diretas**: distinguir pesquisa de endereço, localização atual e busca de bares na área com rótulos curtos, sem novos parágrafos explicativos.
+- [x] **P1 — Formulários sem instruções redundantes**: removidos os parágrafos explicativos dos formulários de preço; manter rótulos curtos.
+- [ ] **P2 — Texto do local no “Adicionar bar”**: “Centro do mapa (ainda não ajustado)” vs. “Local confirmado” ainda confunde; simplificar o texto de estado do pino.
 
 ---
 
@@ -85,6 +103,8 @@ Checkpoint: app está no ar e acessível; equipe pode monitorar e reagir.
 Backlog de features priorizadas com base em [MGB_FEATURES_AND_BRAZIL.md](../MGB_FEATURES_AND_BRAZIL.md) e necessidades do mercado brasileiro.
 
 ### Próximas features (prioridade máxima)
+
+Depois das correções P0/P1 da seção “Achados do teste com usuário”.
 
 1. **Frescor de preços ("atualizado há X dias" + confirmação "Ainda é esse preço?")**: coluna `updated_at` nos preços, rótulo "atualizado há X dias" no sheet/card e botão "Ainda é esse preço? Sim/Não" para a comunidade confirmar ou corrigir.
 2. **Foto do cardápio → preços (extração via IA com confirmação no formulário)**: o usuário envia uma foto do cardápio, a IA (via Vercel AI Gateway) extrai `{tipo, marca, preço}` e o formulário de preços já vem preenchido para o usuário revisar e confirmar.
