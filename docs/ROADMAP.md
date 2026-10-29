@@ -61,6 +61,8 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 
 - [ ] Teste manual completo: adicionar bar, editar preços, busca, filtros, empty state em mobile e desktop
   - Parcial (29/10/2026, produção, desktop + viewport mobile no navegador): validação de login ao adicionar bar e cancelamento dos modais passaram; nenhuma escrita foi feita. Bares de São Paulo apareceram no mapa, mas a passagem não comprova que todos os 682 importados estão visíveis. Ainda não testados: persistência (salvar bar/preços), geolocalização, rotas e teclado em aparelho real.
+- [x] Build de produção: `npm run build` sem erros críticos; verificar console no build de produção
+- [x] Atualizar Next.js 14 → 15 (15.5.x, com as correções de segurança) e React 18 → 19; `params` das rotas dinâmicas agora é assíncrono (`await params` em `PATCH /api/venues/[id]`)
 
 ### Achados do teste com usuário (29/10/2026)
 
@@ -73,10 +75,9 @@ Prioridade em ordem. Só os itens marcados foram resolvidos; as correções de f
 - [x] **P1 — Mobile: chips do topo cortando “Buscar bares”** em 375 px (quebra de linha, só CSS).
 - [ ] **P1 — Clareza do preço exibido**: deixar claro qual tipo/tamanho de cerveja corresponde ao preço mostrado e há quanto tempo foi informado (frescor de preços continua sendo a próxima feature depois das correções).
 - [ ] **P1 — Formatação de moeda consistente em pt-BR** (`R$ 7,90` em pinos, cards, sheet e filtros); adiado para não conflitar com os PRs de filtro/lista em andamento.
-- [x] **P1 — Ações do mapa mais diretas**: removidos os parágrafos explicativos dos formulários de preço; manter rótulos curtos e sem instruções redundantes.
+- [ ] **P1 — Ações do mapa mais diretas**: distinguir pesquisa de endereço, localização atual e busca de bares na área com rótulos curtos, sem novos parágrafos explicativos.
+- [x] **P1 — Formulários sem instruções redundantes**: removidos os parágrafos explicativos dos formulários de preço; manter rótulos curtos.
 - [ ] **P2 — Texto do local no “Adicionar bar”**: “Centro do mapa (ainda não ajustado)” vs. “Local confirmado” ainda confunde; simplificar o texto de estado do pino.
-- [x] Build de produção: `npm run build` sem erros críticos; verificar console no build de produção
-- [x] Atualizar Next.js 14 → 15 (15.5.x, com as correções de segurança) e React 18 → 19; `params` das rotas dinâmicas agora é assíncrono (`await params` em `PATCH /api/venues/[id]`)
 
 ---
 
