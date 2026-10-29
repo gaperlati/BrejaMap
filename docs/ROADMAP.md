@@ -41,6 +41,7 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 
 ### Polimento e robustez
 
+- [x] Favicon próprio: pino de mapa com caneca de cerveja nas cores do app, em SVG e ICO, com ícone para atalhos no iOS.
 - [x] Corrigir “Buscar bares” para consultar bounds/zoom do mapa ao vivo por callback, com limpeza do handle ao desmontar e reinicialização dos relatórios ao remontar.
 - [x] Refatorar `src/app/page.tsx` em hooks focados (`src/lib/use-venues-map.ts`, `src/lib/use-venue-filters.ts`) e helpers puros testados (`src/lib/venue-state.ts`), sem mudança de comportamento
 - [x] Meta tags e Open Graph: título, descrição, imagem para compartilhamento em redes sociais (atualizar `src/app/layout.tsx`)
