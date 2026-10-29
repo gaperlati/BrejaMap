@@ -119,10 +119,6 @@ export function AddPricesModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <p className="text-stone-400 text-sm">
-            Informe os preços que você conhece. Tipo + marca + preço. Use &quot;Adicionar cerveja&quot; para mais opções.
-          </p>
-
           <div>
             <p className="block text-sm font-medium text-stone-400 mb-2">
               Preços de cerveja * (ao menos um)

@@ -414,12 +414,9 @@ function AddVenueDialog({
               </fieldset>
 
               <fieldset>
-                <legend className="block text-sm font-medium text-stone-300 mb-1">
+                <legend className="block text-sm font-medium text-stone-300 mb-2">
                   Preços de cerveja * (adicione ao menos um)
                 </legend>
-                <p className="text-xs text-stone-500 mb-3">
-                  Tipo, marca (ex: Brahma, Heineken) e preço. Use &quot;Adicionar cerveja&quot; para mais opções.
-                </p>
                 <div className="space-y-3">
                   {priceRows.map((row, index) => (
                     <div
