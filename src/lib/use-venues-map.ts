@@ -10,9 +10,10 @@ import {
   saveErrorMessage,
   type ApiError,
 } from "@/lib/api";
-import { expandBounds, type Bounds } from "@/lib/geo";
+import type { Bounds } from "@/lib/geo";
 import { attachMapHandle, type MapHandle } from "@/lib/mapHandle";
 import { getAccessToken } from "@/lib/supabase-browser";
+import { createVenueAreaLoader, projectViewportBounds } from "@/lib/venue-area-loader";
 import {
   apiVenueToVenue,
   boundsFromCenterAndZoom,
@@ -24,8 +25,6 @@ import type { Venue } from "@/types";
 
 /** Zoom threshold: allow places search when zoom >= this. */
 const PLACES_ZOOM_THRESHOLD = 12;
-/** Minimum ms between two venue requests (0 = disabled). */
-const PLACES_REQUEST_COOLDOWN_MS = 0;
 /** Debounce before auto-loading venues after user stops panning/zooming. */
 const AUTO_LOAD_DEBOUNCE_MS = 150;
 /** Expand visible bounds by this factor when calling the API (overscanning for smoother pans). */
@@ -57,77 +56,55 @@ export function useVenuesMap() {
   const [osmError, setOsmError] = useState<string | null>(null);
   /** The last loaded view hit the API cap: some bars in it are not shown until the user zooms in. */
   const [venuesTruncated, setVenuesTruncated] = useState(false);
-  const osmRequestIdRef = useRef(0);
-  const osmCacheRef = useRef(new VenueBboxCache(PLACES_CACHE_MAX_ENTRIES));
-  const lastOverpassRequestTimeRef = useRef(0);
-  const autoLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastBoundsForAutoLoadRef = useRef<{ bounds: Bounds; zoom: number } | null>(null);
   /** Live map handle from `Map`'s `onReady` (null while the map isn't mounted). */
   const mapHandleRef = useRef<MapHandle | null>(null);
+  /** Last viewport reported by the real map; sizes the projected area while it is unmounted. */
+  const lastMapViewportRef = useRef<{ bounds: Bounds; zoom: number } | null>(null);
   const initialLocationResolvedRef = useRef(false);
   /** Set once the user pans/zooms, searches or locates; startup geolocation then won't recenter. */
   const userInteractedRef = useRef(false);
 
-  /**
-   * Load places for the given bounds (cache or API).
-   * Used by both manual "Buscar bares" and auto-load on pan/zoom.
-   * When isManual is false, cooldown/zoom errors are not shown to the user.
-   */
-  const tryLoadPlacesForBounds = useCallback(
-    (bounds: Bounds, zoom: number, isManual: boolean) => {
-      if (zoom < PLACES_ZOOM_THRESHOLD) {
-        if (isManual) setOsmError("Dê mais zoom no mapa para buscar bares desta área.");
-        return;
-      }
-
-      const cache = osmCacheRef.current;
-
-      const mergeExternalIntoState = (newVenues: Venue[]) => {
-        setVenues((prev) => mergeExternalVenues(prev, newVenues));
-      };
-
-      const cached = cache.get(bounds);
-      if (cached) {
-        mergeExternalIntoState(cached.venues);
-        setVenuesTruncated(cached.truncated);
-        setOsmLoadState("success");
-        setOsmError(null);
-        return;
-      }
-
-      const now = Date.now();
-      if (
-        PLACES_REQUEST_COOLDOWN_MS > 0 &&
-        now - lastOverpassRequestTimeRef.current < PLACES_REQUEST_COOLDOWN_MS
-      ) {
-        if (isManual) setOsmError("Aguarde um pouco entre as buscas.");
-        return;
-      }
-
-      const requestId = ++osmRequestIdRef.current;
-      setOsmLoadState("loading");
-      setOsmError(null);
-      if (PLACES_REQUEST_COOLDOWN_MS > 0) lastOverpassRequestTimeRef.current = now;
-
-      const requestBounds = expandBounds(bounds, OVERSCAN_FACTOR);
-
-      fetchVenuesInBounds(requestBounds)
-        .then(({ venues: apiVenues, truncated }) => {
-          if (requestId !== osmRequestIdRef.current) return;
-          const asVenues: Venue[] = apiVenues.map(apiVenueToVenue);
-          mergeExternalIntoState(asVenues);
-          setVenuesTruncated(truncated);
-          setOsmLoadState("success");
-          cache.set(bounds, requestBounds, { venues: asVenues, truncated });
-        })
-        .catch((e) => {
-          if (requestId !== osmRequestIdRef.current) return;
-          setVenuesTruncated(false);
-          setOsmLoadState("error");
-          setOsmError(loadVenuesErrorMessage(e));
-        });
-    },
-    []
+  /** Cache + debounce + latest-wins loading of the venues of the current area. */
+  const [loader] = useState(() =>
+    createVenueAreaLoader({
+      fetchArea: (requestBounds) =>
+        fetchVenuesInBounds(requestBounds).then(({ venues: apiVenues, truncated }) => ({
+          venues: apiVenues.map(apiVenueToVenue),
+          truncated,
+        })),
+      cache: new VenueBboxCache(PLACES_CACHE_MAX_ENTRIES),
+      minZoom: PLACES_ZOOM_THRESHOLD,
+      debounceMs: AUTO_LOAD_DEBOUNCE_MS,
+      overscanFactor: OVERSCAN_FACTOR,
+      onEvent: (event) => {
+        switch (event.kind) {
+          case "loading":
+            setOsmLoadState("loading");
+            setOsmError(null);
+            break;
+          case "loaded":
+            setVenues((prev) => mergeExternalVenues(prev, event.entry.venues));
+            setVenuesTruncated(event.entry.truncated);
+            setOsmLoadState("success");
+            setOsmError(null);
+            break;
+          case "error":
+            setVenuesTruncated(false);
+            setOsmLoadState("error");
+            setOsmError(loadVenuesErrorMessage(event.error));
+            break;
+          case "cleared":
+            setVenues((prev) => prev.filter((v) => !isFromExternal(v)));
+            setOsmError(null);
+            setVenuesTruncated(false);
+            setOsmLoadState("idle");
+            break;
+          case "zoom-too-low":
+            setOsmError("Dê mais zoom no mapa para buscar bares desta área.");
+            break;
+        }
+      },
+    })
   );
 
   // Sync map view to state when user pans/zooms; clear venues when zoom < threshold; trigger auto-load when zoom >= threshold
@@ -148,36 +125,18 @@ export function useVenuesMap() {
         ) {
           userInteractedRef.current = true;
         }
+        lastMapViewportRef.current = { bounds, zoom };
         setMapCenter(center);
         setMapZoom(zoom);
         setMapBounds(bounds);
       }
 
-      if (zoom < PLACES_ZOOM_THRESHOLD) {
-        if (reason === "idle") {
-          if (autoLoadTimeoutRef.current) {
-            clearTimeout(autoLoadTimeoutRef.current);
-            autoLoadTimeoutRef.current = null;
-          }
-          lastBoundsForAutoLoadRef.current = null;
-          setVenues((prev) => prev.filter((v) => !isFromExternal(v)));
-          setOsmError(null);
-          setVenuesTruncated(false);
-          setOsmLoadState("idle");
-        }
-        return;
-      }
-
+      // Below the threshold only the settled (idle) view clears the loaded venues.
+      if (zoom < PLACES_ZOOM_THRESHOLD && reason !== "idle") return;
       // Mesmo durante o movimento, apenas atualizamos o "alvo" do próximo carregamento.
-      lastBoundsForAutoLoadRef.current = { bounds, zoom };
-      if (autoLoadTimeoutRef.current) clearTimeout(autoLoadTimeoutRef.current);
-      autoLoadTimeoutRef.current = setTimeout(() => {
-        autoLoadTimeoutRef.current = null;
-        const b = lastBoundsForAutoLoadRef.current;
-        if (b) tryLoadPlacesForBounds(b.bounds, b.zoom, false);
-      }, AUTO_LOAD_DEBOUNCE_MS);
+      loader.request(bounds, zoom, "debounced");
     },
-    [tryLoadPlacesForBounds]
+    [loader]
   );
 
   const handleMapReady = useCallback(
@@ -187,18 +146,34 @@ export function useVenuesMap() {
 
   const handleLoadPlacesBars = useCallback(() => {
     const current = mapHandleRef.current?.getCurrentBounds();
-    const zoom = current?.zoom ?? mapZoom;
-    const bounds =
-      current?.bounds ?? boundsFromCenterAndZoom(mapCenter, mapZoom);
-    tryLoadPlacesForBounds(bounds, zoom, true);
-  }, [mapZoom, mapCenter, tryLoadPlacesForBounds]);
+    loader.request(current?.bounds ?? mapBounds, current?.zoom ?? mapZoom, "manual");
+  }, [mapZoom, mapBounds, loader]);
 
-  const handleSearchLocation = useCallback((lat: number, lng: number, zoom: number) => {
-    userInteractedRef.current = true;
-    setMapCenter({ lat, lng });
-    setMapZoom(zoom);
-    setSearchMarker({ lat, lng });
-  }, []);
+  /**
+   * Moves the view to an explicitly chosen location. A mounted map pans/zooms and reports
+   * its real bounds itself; without one (list view) nothing would, so the area the list
+   * shows is projected here and its venues are loaded right away.
+   */
+  const goToLocation = useCallback(
+    (center: { lat: number; lng: number }, zoom: number) => {
+      setMapCenter(center);
+      setMapZoom(zoom);
+      if (mapHandleRef.current) return;
+      const bounds = projectViewportBounds(center, zoom, lastMapViewportRef.current);
+      setMapBounds(bounds);
+      loader.request(bounds, zoom, "now");
+    },
+    [loader]
+  );
+
+  const handleSearchLocation = useCallback(
+    (lat: number, lng: number, zoom: number) => {
+      userInteractedRef.current = true;
+      goToLocation({ lat, lng }, zoom);
+      setSearchMarker({ lat, lng });
+    },
+    [goToLocation]
+  );
 
   const handleLocateMe = useCallback(() => {
     userInteractedRef.current = true;
@@ -207,8 +182,7 @@ export function useVenuesMap() {
       (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        setMapCenter({ lat, lng });
-        setMapZoom(PRECISE_LOCATION_ZOOM);
+        goToLocation({ lat, lng }, PRECISE_LOCATION_ZOOM);
         setSearchMarker({ lat, lng });
         setUserLocation({ lat, lng });
       },
@@ -217,17 +191,10 @@ export function useVenuesMap() {
       },
       { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 }
     );
-  }, []);
+  }, [goToLocation]);
 
-  // Clear auto-load timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (autoLoadTimeoutRef.current) {
-        clearTimeout(autoLoadTimeoutRef.current);
-        autoLoadTimeoutRef.current = null;
-      }
-    };
-  }, []);
+  // Drop the pending auto-load and any in-flight result on unmount
+  useEffect(() => () => loader.cancel(), [loader]);
 
   // Initial map center: browser geolocation if available, otherwise stay on São Carlos.
   // No IP-based fallback: ISP geolocation in Brazil usually resolves to São Paulo capital.
@@ -245,8 +212,7 @@ export function useVenuesMap() {
         setUserLocation({ lat, lng });
         // Never yank the map away from where the user already went.
         if (userInteractedRef.current) return;
-        setMapCenter({ lat, lng });
-        setMapZoom(PRECISE_LOCATION_ZOOM);
+        goToLocation({ lat, lng }, PRECISE_LOCATION_ZOOM);
       },
       () => {
         /* denied, unavailable or timed out — keep the São Carlos default */
@@ -261,7 +227,7 @@ export function useVenuesMap() {
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [goToLocation]);
 
   /**
    * Saves through the API. Only when the backend isn't configured at all (503, e.g. local
@@ -328,7 +294,6 @@ export function useVenuesMap() {
     osmError,
     venuesTruncated,
     mapHandleRef,
-    tryLoadPlacesForBounds,
     handleMapBoundsChange,
     handleMapReady,
     handleLoadPlacesBars,
