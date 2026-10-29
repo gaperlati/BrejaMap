@@ -6,6 +6,7 @@
  */
 
 import { distanceKm } from "./geo";
+import { createRequestScheduler, type RequestScheduler } from "./request-scheduler";
 
 export interface NominatimResult {
   place_id: number;
@@ -368,13 +369,38 @@ function searchParams(query: string, viewbox: string, bounded: boolean): URLSear
   });
 }
 
-async function fetchNominatim(
-  url: string,
-  signal?: AbortSignal
-): Promise<NominatimResult[]> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal });
-  if (!res.ok) return [];
-  return (await res.json()) as NominatimResult[];
+/** Nominatim's usage policy allows at most 1 request per second per client. */
+export const NOMINATIM_MIN_INTERVAL_MS = 1000;
+
+/**
+ * Shared by every Nominatim call in this tab (main map search, "Adicionar bar" search and
+ * reverse geocoding), so their request starts are always >= 1 s apart.
+ */
+let nominatimScheduler: RequestScheduler = createRequestScheduler(NOMINATIM_MIN_INTERVAL_MS);
+
+/** Swaps the shared scheduler (tests use a fake clock); returns the previous one. */
+export function setNominatimSchedulerForTesting(scheduler: RequestScheduler): RequestScheduler {
+  const previous = nominatimScheduler;
+  nominatimScheduler = scheduler;
+  return previous;
+}
+
+/**
+ * Rate-limited GET to Nominatim. Waits for a free slot first; an abort while waiting means
+ * the request is never sent. Throws on HTTP errors (e.g. 429), so callers can tell "no
+ * results" from "the search failed".
+ */
+async function fetchNominatimJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const res = await nominatimScheduler.schedule(
+    () => fetch(url, { headers: { "User-Agent": USER_AGENT }, signal }),
+    signal
+  );
+  if (!res.ok) throw new Error(`Nominatim request failed (${res.status})`);
+  return (await res.json()) as T;
+}
+
+function fetchNominatim(url: string, signal?: AbortSignal): Promise<NominatimResult[]> {
+  return fetchNominatimJson<NominatimResult[]>(url, signal);
 }
 
 export async function searchAddress(
@@ -417,7 +443,8 @@ export interface NearbySearchResult {
  * Address search for placing a point (e.g. "Adicionar bar"): first only around `center`
  * (where the user is looking), so a common street name doesn't return homonyms in other
  * cities; when nothing is found there, falls back to the regular SP-biased search. The
- * second request only runs after an empty first one, keeping Nominatim's 1 req/s policy.
+ * fallback only runs after an empty first answer, and like every Nominatim call it goes
+ * through the shared scheduler, so it starts at least 1 s after the previous request.
  */
 export async function searchAddressNear(
   query: string,
@@ -461,12 +488,10 @@ export async function reverseGeocode(
     zoom: "18",
     "accept-language": "pt-BR",
   });
-  const res = await fetch(`${NOMINATIM_REVERSE_URL}?${params}`, {
-    headers: { "User-Agent": USER_AGENT },
-    signal: options?.signal,
-  });
-  if (!res.ok) throw new Error(`Reverse geocode failed (${res.status})`);
-  const data = (await res.json()) as NominatimResult & { error?: string };
+  const data = await fetchNominatimJson<NominatimResult & { error?: string }>(
+    `${NOMINATIM_REVERSE_URL}?${params}`,
+    options?.signal
+  );
   return data && !data.error && data.address ? data : null;
 }
 

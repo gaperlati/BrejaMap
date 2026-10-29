@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  NOMINATIM_MIN_INTERVAL_MS,
   dedupeNominatimResults,
   extractNominatimAddress,
   formatDistanceLabel,
@@ -12,10 +13,29 @@ import {
   placeDetailsFromNominatim,
   rankNominatimResults,
   reverseGeocode,
+  searchAddress,
   searchAddressNear,
+  setNominatimSchedulerForTesting,
   viewboxAround,
   type NominatimResult,
 } from "./geocode";
+import { createRequestScheduler } from "./request-scheduler";
+
+// Virtual time for the shared Nominatim scheduler: waits advance the clock instantly, so
+// request spacing is asserted without real 1 s sleeps.
+let virtualNow = 0;
+setNominatimSchedulerForTesting(
+  createRequestScheduler(NOMINATIM_MIN_INTERVAL_MS, {
+    now: () => virtualNow,
+    sleep: (ms) =>
+      new Promise((resolve) =>
+        setImmediate(() => {
+          virtualNow += ms;
+          resolve();
+        })
+      ),
+  })
+);
 
 const SAO_CARLOS_ADDRESS = {
   city: "São Carlos",
@@ -299,21 +319,26 @@ function street(
 
 type FetchFn = typeof globalThis.fetch;
 
-/** Replaces `fetch` with a queue of JSON responses and records the requested URLs. */
+/**
+ * Replaces `fetch` with a queue of JSON responses and records the requested URLs and the
+ * (virtual) time each request was sent.
+ */
 async function withFetch<T>(
   responses: { status?: number; body: unknown }[],
-  fn: (urls: URL[]) => Promise<T>
+  fn: (urls: URL[], sentAt: number[]) => Promise<T>
 ): Promise<T> {
   const original = globalThis.fetch;
   const urls: URL[] = [];
+  const sentAt: number[] = [];
   globalThis.fetch = (async (input: Parameters<FetchFn>[0]) => {
     urls.push(new URL(String(input)));
+    sentAt.push(virtualNow);
     const next = responses.shift();
     if (!next) throw new Error("unexpected fetch");
     return new Response(JSON.stringify(next.body), { status: next.status ?? 200 });
   }) as FetchFn;
   try {
-    return await fn(urls);
+    return await fn(urls, sentAt);
   } finally {
     globalThis.fetch = original;
   }
@@ -344,15 +369,64 @@ test("searchAddressNear searches only around the pin first", async () => {
 test("searchAddressNear falls back to the state-wide search when nothing is nearby", async () => {
   const campinas = street(20, "Campinas", "-22.9000", "-47.0600");
   const sorocaba = street(21, "Sorocaba", "-23.5000", "-47.4500");
-  const result = await withFetch([{ body: [] }, { body: [sorocaba, campinas] }], async (urls) => {
-    const r = await searchAddressNear("Rua Alvarenga Peixoto", SAO_CARLOS_CENTER);
-    assert.equal(urls.length, 2);
-    assert.equal(urls[1].searchParams.get("bounded"), "0");
-    return r;
-  });
+  const result = await withFetch(
+    [{ body: [] }, { body: [sorocaba, campinas] }],
+    async (urls, sentAt) => {
+      const r = await searchAddressNear("Rua Alvarenga Peixoto", SAO_CARLOS_CENTER);
+      assert.equal(urls.length, 2);
+      assert.equal(urls[1].searchParams.get("bounded"), "0");
+      // The fallback respects Nominatim's 1 request/s policy.
+      assert.ok(sentAt[1] - sentAt[0] >= NOMINATIM_MIN_INTERVAL_MS);
+      return r;
+    }
+  );
   assert.equal(result.scope, "wide");
   // Ranked by proximity to the pin: Campinas (~150 km) before Sorocaba (~200 km).
   assert.deepEqual(result.results.map((r) => r.place_id), [20, 21]);
+});
+
+test("searchAddressNear reports an HTTP error instead of falling back", async () => {
+  await withFetch([{ status: 429, body: {} }], async (urls) => {
+    await assert.rejects(searchAddressNear("Rua Alvarenga Peixoto", SAO_CARLOS_CENTER));
+    assert.equal(urls.length, 1);
+  });
+});
+
+test("search and reverse geocoding share one 1 request/s queue", async () => {
+  const found = street(31, "São Carlos", "-22.0175", "-47.8909");
+  await withFetch(
+    [{ body: [found] }, { body: found }, { body: [found] }],
+    async (urls, sentAt) => {
+      await Promise.all([
+        searchAddress("Rua Alvarenga Peixoto"),
+        reverseGeocode(SAO_CARLOS_CENTER),
+        searchAddressNear("Rua Alvarenga Peixoto", SAO_CARLOS_CENTER),
+      ]);
+      assert.deepEqual(
+        urls.map((u) => u.pathname),
+        ["/search", "/reverse", "/search"]
+      );
+      for (let i = 1; i < sentAt.length; i++) {
+        assert.ok(sentAt[i] - sentAt[i - 1] >= NOMINATIM_MIN_INTERVAL_MS, `gap before #${i}`);
+      }
+    }
+  );
+});
+
+test("a lookup aborted while waiting for its slot is never sent", async () => {
+  const found = street(32, "São Carlos", "-22.0175", "-47.8909");
+  await withFetch([{ body: [found] }, { body: [found] }], async (urls) => {
+    const first = searchAddressNear("Rua Episcopal", SAO_CARLOS_CENTER);
+    const stale = new AbortController();
+    const superseded = reverseGeocode(SAO_CARLOS_CENTER, { signal: stale.signal });
+    const latest = searchAddressNear("Rua Alvarenga Peixoto", SAO_CARLOS_CENTER);
+    stale.abort();
+    await assert.rejects(superseded, { name: "AbortError" });
+    await Promise.all([first, latest]);
+    assert.equal(urls.length, 2);
+    assert.ok(urls.every((u) => u.pathname === "/search"));
+    assert.equal(urls[1].searchParams.get("q"), "Rua Alvarenga Peixoto");
+  });
 });
 
 test("searchAddressNear does nothing for a blank query", async () => {

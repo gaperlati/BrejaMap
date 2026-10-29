@@ -11,9 +11,16 @@ import {
   type LatLng,
 } from "@/lib/venue-location";
 
-/** Wait for the pin to settle before asking Nominatim (its policy is 1 request/s). */
+/**
+ * Wait for the pin to settle before looking up its address, so a drag doesn't queue a
+ * lookup per stop. Nominatim's 1 request/s limit is enforced by the shared scheduler in
+ * `geocode.ts`, not by this debounce.
+ */
 const REVERSE_GEOCODE_DEBOUNCE_MS = 700;
-/** A lookup slower than this is reported as failed; the user can type or retry. */
+/**
+ * A lookup slower than this (including the wait for a free Nominatim slot) is reported as
+ * failed, which unblocks "Salvar bar"; the user can type the address or retry.
+ */
 const REVERSE_GEOCODE_TIMEOUT_MS = 10_000;
 const DEVICE_LOCATION_TIMEOUT_MS = 15_000;
 /** Zoom used when the map jumps to the device location or a street/place result. */
