@@ -5,12 +5,37 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  NOMINATIM_MIN_INTERVAL_MS,
   dedupeNominatimResults,
   extractNominatimAddress,
+  formatDistanceLabel,
   formatNominatimResult,
+  placeDetailsFromNominatim,
   rankNominatimResults,
+  reverseGeocode,
+  searchAddress,
+  searchAddressNear,
+  setNominatimSchedulerForTesting,
+  viewboxAround,
   type NominatimResult,
 } from "./geocode";
+import { createRequestScheduler } from "./request-scheduler";
+
+// Virtual time for the shared Nominatim scheduler: waits advance the clock instantly, so
+// request spacing is asserted without real 1 s sleeps.
+let virtualNow = 0;
+setNominatimSchedulerForTesting(
+  createRequestScheduler(NOMINATIM_MIN_INTERVAL_MS, {
+    now: () => virtualNow,
+    sleep: (ms) =>
+      new Promise((resolve) =>
+        setImmediate(() => {
+          virtualNow += ms;
+          resolve();
+        })
+      ),
+  })
+);
 
 const SAO_CARLOS_ADDRESS = {
   city: "São Carlos",
@@ -258,4 +283,208 @@ test("biasLocation boosts closer results", () => {
     rankNominatimResults([centroCampinas, centroSaoCarlos], "Centro", saoCarlos)[0].place_id,
     centroSaoCarlos.place_id
   );
+});
+
+// --- "Adicionar bar": nearby search, reverse geocoding and labels ---
+
+const SAO_CARLOS_CENTER = { lat: -22.0175, lng: -47.8909 };
+
+function street(
+  placeId: number,
+  city: string,
+  lat: string,
+  lon: string,
+  extra: Partial<NominatimResult["address"]> = {}
+): NominatimResult {
+  return {
+    place_id: placeId,
+    osm_type: "way",
+    class: "highway",
+    type: "residential",
+    addresstype: "road",
+    name: "Rua Alvarenga Peixoto",
+    importance: 0.1,
+    lat,
+    lon,
+    display_name: `Rua Alvarenga Peixoto, ${city}, São Paulo, Brasil`,
+    address: {
+      road: "Rua Alvarenga Peixoto",
+      city,
+      state: "São Paulo",
+      "ISO3166-2-lvl4": "BR-SP",
+      ...extra,
+    },
+  };
+}
+
+type FetchFn = typeof globalThis.fetch;
+
+/**
+ * Replaces `fetch` with a queue of JSON responses and records the requested URLs and the
+ * (virtual) time each request was sent.
+ */
+async function withFetch<T>(
+  responses: { status?: number; body: unknown }[],
+  fn: (urls: URL[], sentAt: number[]) => Promise<T>
+): Promise<T> {
+  const original = globalThis.fetch;
+  const urls: URL[] = [];
+  const sentAt: number[] = [];
+  globalThis.fetch = (async (input: Parameters<FetchFn>[0]) => {
+    urls.push(new URL(String(input)));
+    sentAt.push(virtualNow);
+    const next = responses.shift();
+    if (!next) throw new Error("unexpected fetch");
+    return new Response(JSON.stringify(next.body), { status: next.status ?? 200 });
+  }) as FetchFn;
+  try {
+    return await fn(urls, sentAt);
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+test("viewboxAround builds a west,north,east,south box of the given radius", () => {
+  const [west, north, east, south] = viewboxAround(SAO_CARLOS_CENTER, 15).split(",").map(Number);
+  assert.ok(west < SAO_CARLOS_CENTER.lng && east > SAO_CARLOS_CENTER.lng);
+  assert.ok(north > SAO_CARLOS_CENTER.lat && south < SAO_CARLOS_CENTER.lat);
+  // ~15 km of latitude each way; longitude degrees are wider away from the equator.
+  assert.ok(Math.abs(north - SAO_CARLOS_CENTER.lat - 0.1347) < 0.001);
+  assert.ok(east - SAO_CARLOS_CENTER.lng > north - SAO_CARLOS_CENTER.lat);
+});
+
+test("searchAddressNear searches only around the pin first", async () => {
+  const local = street(10, "São Carlos", "-22.0230", "-47.8850", { suburb: "Vila Prado" });
+  const result = await withFetch([{ body: [local] }], async (urls) => {
+    const r = await searchAddressNear("Rua Alvarenga Peixoto", SAO_CARLOS_CENTER);
+    assert.equal(urls.length, 1);
+    assert.equal(urls[0].searchParams.get("bounded"), "1");
+    assert.equal(urls[0].searchParams.get("viewbox"), viewboxAround(SAO_CARLOS_CENTER, 15));
+    return r;
+  });
+  assert.equal(result.scope, "nearby");
+  assert.deepEqual(result.results.map((r) => r.place_id), [10]);
+});
+
+test("searchAddressNear falls back to the state-wide search when nothing is nearby", async () => {
+  const campinas = street(20, "Campinas", "-22.9000", "-47.0600");
+  const sorocaba = street(21, "Sorocaba", "-23.5000", "-47.4500");
+  const result = await withFetch(
+    [{ body: [] }, { body: [sorocaba, campinas] }],
+    async (urls, sentAt) => {
+      const r = await searchAddressNear("Rua Alvarenga Peixoto", SAO_CARLOS_CENTER);
+      assert.equal(urls.length, 2);
+      assert.equal(urls[1].searchParams.get("bounded"), "0");
+      // The fallback respects Nominatim's 1 request/s policy.
+      assert.ok(sentAt[1] - sentAt[0] >= NOMINATIM_MIN_INTERVAL_MS);
+      return r;
+    }
+  );
+  assert.equal(result.scope, "wide");
+  // Ranked by proximity to the pin: Campinas (~150 km) before Sorocaba (~200 km).
+  assert.deepEqual(result.results.map((r) => r.place_id), [20, 21]);
+});
+
+test("searchAddressNear reports an HTTP error instead of falling back", async () => {
+  await withFetch([{ status: 429, body: {} }], async (urls) => {
+    await assert.rejects(searchAddressNear("Rua Alvarenga Peixoto", SAO_CARLOS_CENTER));
+    assert.equal(urls.length, 1);
+  });
+});
+
+test("search and reverse geocoding share one 1 request/s queue", async () => {
+  const found = street(31, "São Carlos", "-22.0175", "-47.8909");
+  await withFetch(
+    [{ body: [found] }, { body: found }, { body: [found] }],
+    async (urls, sentAt) => {
+      await Promise.all([
+        searchAddress("Rua Alvarenga Peixoto"),
+        reverseGeocode(SAO_CARLOS_CENTER),
+        searchAddressNear("Rua Alvarenga Peixoto", SAO_CARLOS_CENTER),
+      ]);
+      assert.deepEqual(
+        urls.map((u) => u.pathname),
+        ["/search", "/reverse", "/search"]
+      );
+      for (let i = 1; i < sentAt.length; i++) {
+        assert.ok(sentAt[i] - sentAt[i - 1] >= NOMINATIM_MIN_INTERVAL_MS, `gap before #${i}`);
+      }
+    }
+  );
+});
+
+test("a lookup aborted while waiting for its slot is never sent", async () => {
+  const found = street(32, "São Carlos", "-22.0175", "-47.8909");
+  await withFetch([{ body: [found] }, { body: [found] }], async (urls) => {
+    const first = searchAddressNear("Rua Episcopal", SAO_CARLOS_CENTER);
+    const stale = new AbortController();
+    const superseded = reverseGeocode(SAO_CARLOS_CENTER, { signal: stale.signal });
+    const latest = searchAddressNear("Rua Alvarenga Peixoto", SAO_CARLOS_CENTER);
+    stale.abort();
+    await assert.rejects(superseded, { name: "AbortError" });
+    await Promise.all([first, latest]);
+    assert.equal(urls.length, 2);
+    assert.ok(urls.every((u) => u.pathname === "/search"));
+    assert.equal(urls[1].searchParams.get("q"), "Rua Alvarenga Peixoto");
+  });
+});
+
+test("searchAddressNear does nothing for a blank query", async () => {
+  const result = await withFetch([], () => searchAddressNear("   ", SAO_CARLOS_CENTER));
+  assert.deepEqual(result, { results: [], scope: "nearby" });
+});
+
+test("reverseGeocode returns the address, null when empty, and throws on HTTP errors", async () => {
+  const found = street(30, "São Carlos", "-22.0175", "-47.8909", { house_number: "120" });
+  await withFetch([{ body: found }], async (urls) => {
+    const r = await reverseGeocode(SAO_CARLOS_CENTER);
+    assert.equal(r?.place_id, 30);
+    assert.equal(urls[0].pathname, "/reverse");
+    assert.equal(urls[0].searchParams.get("zoom"), "18");
+  });
+  await withFetch([{ body: { error: "Unable to geocode" } }], async () => {
+    assert.equal(await reverseGeocode(SAO_CARLOS_CENTER), null);
+  });
+  await withFetch([{ status: 503, body: {} }], async () => {
+    await assert.rejects(reverseGeocode(SAO_CARLOS_CENTER));
+  });
+});
+
+test("placeDetailsFromNominatim keeps the street, never a nearby POI name", () => {
+  const pub: NominatimResult = {
+    ...street(40, "São Carlos", "-22.0175", "-47.8909", {
+      house_number: "120",
+      suburb: "Vila Prado",
+    }),
+    class: "amenity",
+    type: "pub",
+    addresstype: "amenity",
+    name: "Outro Bar",
+  };
+  assert.deepEqual(placeDetailsFromNominatim(pub), {
+    address: "Rua Alvarenga Peixoto, 120",
+    neighborhood: "Vila Prado",
+    city: "São Carlos",
+    state: "SP",
+  });
+  const noAddress: NominatimResult = {
+    place_id: 41,
+    lat: "-22",
+    lon: "-47",
+    display_name: "Algum lugar",
+  };
+  assert.deepEqual(placeDetailsFromNominatim(noAddress), {
+    address: "",
+    neighborhood: "",
+    city: "",
+    state: "",
+  });
+});
+
+test("formatDistanceLabel rounds to readable pt-BR distances", () => {
+  assert.equal(formatDistanceLabel(0.004), "a 10 m");
+  assert.equal(formatDistanceLabel(0.347), "a 350 m");
+  assert.equal(formatDistanceLabel(2.345), "a 2,3 km");
+  assert.equal(formatDistanceLabel(148.4), "a 148 km");
+  assert.equal(formatDistanceLabel(Number.NaN), "");
 });

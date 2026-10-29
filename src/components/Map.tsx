@@ -1,12 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  useJsApiLoader,
-  GoogleMap,
-  Marker,
-} from "@react-google-maps/api";
+import { GoogleMap, Marker } from "@react-google-maps/api";
 import type { Venue } from "@/types";
+import { useGoogleMaps } from "@/lib/use-google-maps";
 import { createMapHandle, type MapBounds, type MapHandle } from "@/lib/mapHandle";
 import {
   clusterMapVenues,
@@ -182,11 +179,9 @@ export function Map({
   /** Live map zoom (the `zoom` prop only follows `idle`), used to cluster markers. */
   const [liveZoom, setLiveZoom] = useState(zoom);
   const initialCenterSet = useRef(false);
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const boundsListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastReportedRef = useRef<string>("");
-  const [loadTimeout, setLoadTimeout] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window !== "undefined" &&
     window.matchMedia(`(max-width: ${MOBILE_MAP_MAX_WIDTH_PX}px)`).matches
@@ -215,18 +210,8 @@ export function Map({
     };
   }, [map]);
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: apiKey || "",
-    preventGoogleFontsLoading: true,
-    version: "weekly",
-  });
-
   // If the script doesn't finish loading in 12s, show a hint and retry option
-  useEffect(() => {
-    if (isLoaded || loadError || !apiKey) return;
-    const t = setTimeout(() => setLoadTimeout(true), 12_000);
-    return () => clearTimeout(t);
-  }, [isLoaded, loadError, apiKey]);
+  const { isLoaded, loadError, timedOut: loadTimeout, hasApiKey: apiKey } = useGoogleMaps();
 
   const onLoad = useCallback((mapInstance: google.maps.Map) => {
     lastReportedRef.current = "";

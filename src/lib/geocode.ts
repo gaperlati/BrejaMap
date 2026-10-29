@@ -6,6 +6,7 @@
  */
 
 import { distanceKm } from "./geo";
+import { createRequestScheduler, type RequestScheduler } from "./request-scheduler";
 
 export interface NominatimResult {
   place_id: number;
@@ -353,12 +354,8 @@ export function rankNominatimResults(
   return dedupeNominatimResults(ranked);
 }
 
-export async function searchAddress(
-  query: string,
-  options?: { biasLocation?: LatLng }
-): Promise<NominatimResult[]> {
-  if (!query.trim()) return [];
-  const params = new URLSearchParams({
+function searchParams(query: string, viewbox: string, bounded: boolean): URLSearchParams {
+  return new URLSearchParams({
     q: query.trim(),
     format: "json",
     addressdetails: "1",
@@ -366,15 +363,167 @@ export async function searchAddress(
     dedupe: "1",
     // The app only covers Brazil; restricting results avoids picking a homonym abroad.
     countrycodes: "br",
-    // Prefer São Paulo state without excluding the rest of Brazil.
-    viewbox: SAO_PAULO_VIEWBOX,
-    bounded: "0",
+    viewbox,
+    bounded: bounded ? "1" : "0",
     "accept-language": "pt-BR",
   });
-  const res = await fetch(`${NOMINATIM_URL}?${params}`, {
-    headers: { "User-Agent": USER_AGENT },
-  });
-  if (!res.ok) return [];
-  const data = (await res.json()) as NominatimResult[];
+}
+
+/** Nominatim's usage policy allows at most 1 request per second per client. */
+export const NOMINATIM_MIN_INTERVAL_MS = 1000;
+
+/**
+ * Shared by every Nominatim call in this tab (main map search, "Adicionar bar" search and
+ * reverse geocoding), so their request starts are always >= 1 s apart.
+ */
+let nominatimScheduler: RequestScheduler = createRequestScheduler(NOMINATIM_MIN_INTERVAL_MS);
+
+/** Swaps the shared scheduler (tests use a fake clock); returns the previous one. */
+export function setNominatimSchedulerForTesting(scheduler: RequestScheduler): RequestScheduler {
+  const previous = nominatimScheduler;
+  nominatimScheduler = scheduler;
+  return previous;
+}
+
+/**
+ * Rate-limited GET to Nominatim. Waits for a free slot first; an abort while waiting means
+ * the request is never sent. Throws on HTTP errors (e.g. 429), so callers can tell "no
+ * results" from "the search failed".
+ */
+async function fetchNominatimJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const res = await nominatimScheduler.schedule(
+    () => fetch(url, { headers: { "User-Agent": USER_AGENT }, signal }),
+    signal
+  );
+  if (!res.ok) throw new Error(`Nominatim request failed (${res.status})`);
+  return (await res.json()) as T;
+}
+
+function fetchNominatim(url: string, signal?: AbortSignal): Promise<NominatimResult[]> {
+  return fetchNominatimJson<NominatimResult[]>(url, signal);
+}
+
+export async function searchAddress(
+  query: string,
+  options?: { biasLocation?: LatLng; signal?: AbortSignal }
+): Promise<NominatimResult[]> {
+  if (!query.trim()) return [];
+  // Prefer São Paulo state without excluding the rest of Brazil.
+  const params = searchParams(query, SAO_PAULO_VIEWBOX, false);
+  const data = await fetchNominatim(`${NOMINATIM_URL}?${params}`, options?.signal);
   return rankNominatimResults(data, query, options?.biasLocation).slice(0, MAX_RESULTS);
+}
+
+/** Radius of the "near the pin" pass of `searchAddressNear`. */
+export const NEARBY_SEARCH_RADIUS_KM = 15;
+
+/**
+ * Nominatim `viewbox` ("west,north,east,south") of a square of `radiusKm` around `center`.
+ */
+export function viewboxAround(center: LatLng, radiusKm: number): string {
+  const dLat = radiusKm / 111.32;
+  const cosLat = Math.max(Math.cos((center.lat * Math.PI) / 180), 0.01);
+  const dLng = radiusKm / (111.32 * cosLat);
+  const r = (n: number) => n.toFixed(5);
+  return [
+    r(center.lng - dLng),
+    r(center.lat + dLat),
+    r(center.lng + dLng),
+    r(center.lat - dLat),
+  ].join(",");
+}
+
+export interface NearbySearchResult {
+  results: NominatimResult[];
+  /** "nearby": every result is within the radius; "wide": nothing nearby, state-wide fallback. */
+  scope: "nearby" | "wide";
+}
+
+/**
+ * Address search for placing a point (e.g. "Adicionar bar"): first only around `center`
+ * (where the user is looking), so a common street name doesn't return homonyms in other
+ * cities; when nothing is found there, falls back to the regular SP-biased search. The
+ * fallback only runs after an empty first answer, and like every Nominatim call it goes
+ * through the shared scheduler, so it starts at least 1 s after the previous request.
+ */
+export async function searchAddressNear(
+  query: string,
+  center: LatLng,
+  options?: { signal?: AbortSignal; radiusKm?: number }
+): Promise<NearbySearchResult> {
+  if (!query.trim()) return { results: [], scope: "nearby" };
+  const params = searchParams(
+    query,
+    viewboxAround(center, options?.radiusKm ?? NEARBY_SEARCH_RADIUS_KM),
+    true
+  );
+  const nearby = await fetchNominatim(`${NOMINATIM_URL}?${params}`, options?.signal);
+  if (nearby.length > 0) {
+    return {
+      results: rankNominatimResults(nearby, query, center).slice(0, MAX_RESULTS),
+      scope: "nearby",
+    };
+  }
+  return {
+    results: await searchAddress(query, { biasLocation: center, signal: options?.signal }),
+    scope: "wide",
+  };
+}
+
+const NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse";
+
+/**
+ * Address of the point (`zoom=18`: nearest building/street). Returns null when Nominatim
+ * has nothing there (e.g. middle of a park or the sea).
+ */
+export async function reverseGeocode(
+  point: LatLng,
+  options?: { signal?: AbortSignal }
+): Promise<NominatimResult | null> {
+  const params = new URLSearchParams({
+    lat: point.lat.toFixed(7),
+    lon: point.lng.toFixed(7),
+    format: "json",
+    addressdetails: "1",
+    zoom: "18",
+    "accept-language": "pt-BR",
+  });
+  const data = await fetchNominatimJson<NominatimResult & { error?: string }>(
+    `${NOMINATIM_REVERSE_URL}?${params}`,
+    options?.signal
+  );
+  return data && !data.error && data.address ? data : null;
+}
+
+/** Address fields of a venue, as stored by POST /api/venues. */
+export interface PlaceDetails {
+  /** Street plus house number when known, e.g. "Rua Alvarenga Peixoto, 120". */
+  address: string;
+  neighborhood: string;
+  city: string;
+  /** Two-letter state code ("SP"); empty when unknown. */
+  state: string;
+}
+
+/**
+ * Venue address fields from a Nominatim result. Only the street is used, never a POI
+ * name: the nearest POI to a pin is often a different business.
+ */
+export function placeDetailsFromNominatim(r: NominatimResult): PlaceDetails {
+  const parts = extractNominatimAddress(r);
+  const state = parts.stateCode && parts.stateCode.length === 2 ? parts.stateCode : "";
+  return {
+    address: parts.street ?? "",
+    neighborhood: parts.neighborhood ?? "",
+    city: parts.city ?? "",
+    state,
+  };
+}
+
+/** "a 350 m", "a 2,3 km", "a 148 km" (pt-BR decimal comma). */
+export function formatDistanceLabel(km: number): string {
+  if (!Number.isFinite(km) || km < 0) return "";
+  if (km < 1) return `a ${Math.max(10, Math.round((km * 1000) / 10) * 10)} m`;
+  if (km < 10) return `a ${km.toFixed(1).replace(".", ",")} km`;
+  return `a ${Math.round(km)} km`;
 }

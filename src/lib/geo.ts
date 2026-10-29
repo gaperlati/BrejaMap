@@ -41,3 +41,18 @@ export function distanceKm(
     Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
 }
+
+/**
+ * Generous bounding box around São Paulo state. Writes outside it are rejected:
+ * the app only targets SP, and it blocks junk coordinates (0,0 etc.).
+ */
+export const SP_STATE_BOUNDS: Bounds = { south: -25.5, north: -19.5, west: -53.3, east: -44.0 };
+
+export function isInsideSpState(lat: number, lng: number): boolean {
+  return (
+    lat >= SP_STATE_BOUNDS.south &&
+    lat <= SP_STATE_BOUNDS.north &&
+    lng >= SP_STATE_BOUNDS.west &&
+    lng <= SP_STATE_BOUNDS.east
+  );
+}
