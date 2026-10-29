@@ -9,7 +9,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 **BrejaMap** é um mapa de preços de cerveja para o estado de São Paulo. O usuário encontra bares com os melhores preços, filtra por tipo de bebida, bairro e happy hour, e alterna entre vista de mapa e lista.
 
 - **Stack**: Next.js 15 (15.5.x), React 19 (19.2.x), TypeScript, Tailwind CSS, Google Maps JavaScript API. **Backend**: Supabase (Postgres) para venues e preços.
-- **Dados**: o mapa e a lista de bares vêm do **nosso backend** (GET /api/venues por bounds). Não há mais chamadas ao Google Places no cliente; a latência e o payload são controlados pelo nosso banco. Mock inicial em memória quando o backend não está configurado.
+- **Dados**: o mapa e a lista de bares vêm do **nosso backend** (GET /api/venues por bounds). Não há mais chamadas ao Google Places no cliente; a latência e o payload são controlados pelo nosso banco. Sem backend configurado, o mapa começa vazio (não há mais bares de exemplo em memória).
 - **Identidade no navegador**: favicon com caneca de cerveja escura e espuma clara sobre fundo âmbar. O Next.js registra automaticamente `src/app/icon.svg`, `src/app/favicon.ico` (16, 32 e 48 px) e `src/app/apple-icon.png` (180 px) para abas, favoritos e atalhos no iOS.
 
 ---
@@ -36,7 +36,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - **Controles nativos:** `disableDefaultUI: true` e reabilitação só do zoom + tela cheia no desktop; **`cameraControl`**, rotação e pan legados ficam desligados (remove a pilha circular de pan/zoom do mapa vetorial que ainda aparecia no mobile).
 - Zoom no canto inferior **direito** só no desktop; em **viewports ≤639px** zoom e tela cheia nativos ficam ocultos (pinça continua no celular).
 - Botão **“Onde estou”** fica no canto **inferior esquerdo**, acima do crédito Google e da área segura, para não conflitar com os controles à direita no desktop.
-- **Bounds reporting**: quando o zoom fica **< 12**, o mapa avisa o parent para **remover** os bares carregados da API da lista (permanecem só venues do mock e adicionados pelo usuário).
+- **Bounds reporting**: quando o zoom fica **< 12**, o mapa avisa o parent para **remover** os bares carregados da API da lista (permanecem só os adicionados pelo usuário na sessão).
 - **Carregamento automático ao pan/zoom**: durante o movimento a app atualiza apenas o “alvo” do carregamento (sem sincronizar center/zoom/re-render pesado); no evento `idle` ela faz um relatório final e o zoom **≥ 12** dispara a busca ao **nosso backend** (GET /api/venues?bounds=...) após **~150 ms** de debounce (sem cooldown fixo). Não há chamadas ao Google Places no cliente.
 - **Overscanning**: os bounds visíveis são expandidos em **25%** antes de enviar ao backend; a resposta traz bares um pouco fora da tela para micro-pans sem nova requisição.
 - **Merge por ID**: resultados novos são **mesclados** aos já carregados (por ID). Até 300 venues em memória (evição ao ultrapassar).
@@ -76,7 +76,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 - **Chips** (header): Happy hour, Filtros (com indicador quando há filtros ativos), Buscar bares — sem rótulo textual extra ao lado do happy hour. Em telas estreitas (ex.: 375 px) os chips quebram linha em vez de ficarem cortados por rolagem horizontal.
 - **Painel de filtros**: aberto pelo chip “Filtros” no header ou pela sidebar (desktop). O chip “Filtros” fica destacado quando há filtros ativos (indicador visual).
-- **Chip “Buscar bares”**: carrega bares da **nossa API** (backend Supabase) na área visível (zoom ≥ 12). Carregamento automático ao pan/zoom (debounce ~150 ms). Se o backend não estiver configurado, mostra mensagem e permanecem só os bares mock.
+- **Chip “Buscar bares”**: carrega bares da **nossa API** (backend Supabase) na área visível (zoom ≥ 12). Carregamento automático ao pan/zoom (debounce ~150 ms). Se o backend não estiver configurado, mostra mensagem e o mapa fica vazio.
 - **Preço máximo (R$)**: filtra bares cujo menor preço seja ≤ valor (bares sem preços ficam de fora).
 - **Tipo de cerveja**: filtra bares que tenham ao menos um preço daquele tipo (bares sem preços ficam de fora).
 - **Bairro**: lista os bairros dos bares visíveis (ignora vazios, ordem pt-BR).
@@ -91,7 +91,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 - **Fonte de pins no mapa**: o cliente **não** chama mais o Google Places. Ao pan/zoom (idle, zoom ≥ 12) ou ao clicar em “Buscar bares”, o frontend chama **GET /api/venues?bounds=south,west,north,east**. O Next.js consulta o Supabase (tabelas `venues` e `beer_prices`) e devolve um JSON enxuto com os venues na bounding box. Isso elimina a latência e o payload pesado do Places no cliente.
 - **Deduplicação de venues no GET**: quando existem linhas repetidas no banco para o mesmo local (mesmo nome + coordenadas muito próximas), a API responde apenas uma entrada para evitar cards/pins duplicados. A priorização mantém, nessa ordem, venues adicionados por usuário, depois venues com preços e por fim o registro mais recente.
-- **Persistência**: **POST /api/venues** (adicionar bar), **PATCH /api/venues/[id]** (adicionar/editar preços e happy hour) e **POST /api/venues/[id]/report** (sinalizar preços) gravam no Supabase. Se o backend não estiver configurado (503), o app usa apenas estado local (mock + edições em memória). Qualquer **outra falha** (401 sem login, 403 com escrita desativada, 429 por rate limit, 400, 500, rede) é mostrada no próprio modal e o modal continua aberto; o app não finge mais que salvou. Mensagens em pt-BR em `saveErrorMessage` (`src/lib/api.ts`): 401 → “Faça login para adicionar um novo bar.”; 429 → “Muitas alterações em pouco tempo. Aguarde alguns minutos e tente novamente.”
+- **Persistência**: **POST /api/venues** (adicionar bar), **PATCH /api/venues/[id]** (adicionar/editar preços e happy hour) e **POST /api/venues/[id]/report** (sinalizar preços) gravam no Supabase. Se o backend não estiver configurado (503), o app usa apenas estado local (edições em memória). Qualquer **outra falha** (401 sem login, 403 com escrita desativada, 429 por rate limit, 400, 500, rede) é mostrada no próprio modal e o modal continua aberto; o app não finge mais que salvou. Mensagens em pt-BR em `saveErrorMessage` (`src/lib/api.ts`): 401 → “Faça login para adicionar um novo bar.”; 429 → “Muitas alterações em pouco tempo. Aguarde alguns minutos e tente novamente.”
 - **Validação no servidor** (`src/lib/venue-server.ts`, compartilhado pelas duas rotas):
   - GET: bounds precisam ser números finitos, ordenados, com no máximo **2°** por lado; resposta limitada a **500** venues.
 - **GET /api/venues — contrato e áreas densas** (`src/app/api/venues/route.ts`, `src/lib/venue-selection.ts`):
@@ -115,7 +115,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
   - Sem a migração 004, POST/PATCH/report respondem 500 (o log indica a migração faltante).
 - **Schema**: `venues` (id, name, address, neighborhood, city, state, lat, lng, has_happy_hour, happy_hour_details, photo_url, created_at, user_added, source, external_id, prices_unverified, needs_review, created_by, last_edited_by, last_edited_at); `beer_prices` (id, venue_id, type, label, price_brl, volume_ml, created_at); `write_rate_limits` (bucket, key_hash, window_started_at, reset_at, hits). A API devolve `pricesUnverified`, mas nunca `created_by`/`last_edited_by`/`needs_review`. Migrações em `supabase/migrations/001_venues_and_beer_prices.sql`, `002_venues_external_id.sql` (coluna `external_id` opcional e única, usada pela importação do OSM), `003_atomic_venue_writes.sql` (funções de escrita atômica do PATCH/POST) e `004_auth_rate_limits_and_moderation.sql` (autoria, `prices_unverified`, `needs_review`, rate limit, report e RLS).
 - **Dados iniciais**: `venues` é populada offline pelo script de importação do OpenStreetMap (seção 3.3); o mapa continua consultando apenas o nosso banco.
-- **Zoom out**: quando o zoom fica **< 12**, os venues carregados da API são removidos da lista (permanecem mock e user-added).
+- **Zoom out**: quando o zoom fica **< 12**, os venues carregados da API são removidos da lista (permanecem os user-added).
 
 ---
 
@@ -123,10 +123,9 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 Ao publicar o app, o Supabase começa vazio. Opções para o usuário não ficar frustrado:
 
-1. **Manter mock em produção** (comportamento atual): o app inicia com bares de exemplo em memória (`MOCK_VENUES`). Ao clicar em "Buscar bares", a API devolve vazia e esses bares continuam visíveis. Funciona, mas os dados são placeholder.
-2. **Rodar o seed no deploy**: após criar o projeto no Supabase e rodar a migração, executar `supabase/seed.sql` no SQL Editor. Os mesmos bares de exemplo passam a existir no banco; "Buscar bares" em São Paulo/Campinas já retorna dados reais.
-3. **Empty state amigável**: quando não há nenhum bar na região (lista vazia sem filtros), a lista exibe "Nenhum bar nesta região ainda. Seja o primeiro a adicionar!" e botão **Adicionar bar**, convidando o usuário a contribuir.
-4. **Importação do OpenStreetMap (estratégia escolhida)**: um operador roda o script `npm run import:osm` (seção 3.3) por cidade, começando por São Carlos. Ele grava apenas a localização dos bares, sem preços; a comunidade adiciona os preços depois. Não há fallback em tempo de requisição (o backend não chama Overpass nem Google Places) e não há scraping de Google Places/iFood.
+1. **Bares de exemplo (removidos em 29/10/2026)**: o app iniciava com bares fictícios em memória (`MOCK_VENUES`) e o `supabase/seed.sql` gravava os mesmos bares no banco. Ambos foram removidos, junto com os 6 bares de seed (e seus 14 preços) da produção; o app agora parte de lista vazia e mostra só dados do banco.
+2. **Empty state amigável**: quando não há nenhum bar na região (lista vazia sem filtros), a lista exibe "Nenhum bar nesta região ainda. Seja o primeiro a adicionar!" e botão **Adicionar bar**, convidando o usuário a contribuir.
+3. **Importação do OpenStreetMap (estratégia escolhida)**: um operador roda o script `npm run import:osm` (seção 3.3) por cidade, começando por São Carlos. Ele grava apenas a localização dos bares, sem preços; a comunidade adiciona os preços depois. Não há fallback em tempo de requisição (o backend não chama Overpass nem Google Places) e não há scraping de Google Places/iFood.
 
 ---
 

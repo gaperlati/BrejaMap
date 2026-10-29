@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MOCK_VENUES, SAO_CARLOS_CENTER, DEFAULT_ZOOM } from "@/data/venues";
+import { SAO_CARLOS_CENTER, DEFAULT_ZOOM } from "@/data/venues";
 import {
   fetchVenuesInBounds,
   loadVenuesErrorMessage,
@@ -43,7 +43,7 @@ export type OsmLoadState = "idle" | "loading" | "error" | "success";
  * on pan/zoom (cached + debounced) and saving new venues/prices.
  */
 export function useVenuesMap() {
-  const [venues, setVenues] = useState<Venue[]>(MOCK_VENUES);
+  const [venues, setVenues] = useState<Venue[]>([]);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(SAO_CARLOS_CENTER);
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
   const [mapBounds, setMapBounds] = useState<Bounds>(() =>

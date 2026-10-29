@@ -9,7 +9,7 @@ Mapa de preços de cerveja para o estado de São Paulo, com foco no interior (o 
    - **Mapa**: em [Google Cloud Console](https://console.cloud.google.com/apis/credentials), crie uma chave e ative **Maps JavaScript API**. Defina `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
    - **Backend (bares no mapa)**: crie um projeto em [Supabase](https://supabase.com), em Settings → API copie URL e **service_role** key. Defina `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`. Rode, em ordem, os SQLs de `supabase/migrations/` no SQL Editor do Supabase: `001_venues_and_beer_prices.sql` (tabelas), `002_venues_external_id.sql` (coluna `external_id`, usada pela importação do OSM) `003_atomic_venue_writes.sql` (funções `update_venue_and_prices` e `create_venue_with_prices`, que gravam bar + preços numa única transação) e `004_auth_rate_limits_and_moderation.sql` (autoria, rate limit, sinalização de preços e RLS em todas as tabelas; sem 003 e 004, adicionar bar, editar preços e sinalizar retornam 500). Todos podem ser rodados mais de uma vez, sempre nessa ordem.
 
-**Para publicar com dados iniciais**: depois da migração, rode também `supabase/seed.sql` no SQL Editor. Isso insere os bares de exemplo (São Paulo, Campinas e um template em Av. Faria Lima, 949). Sem o seed, o mapa começa com os bares mock em memória até a primeira busca; com o seed, "Buscar bares" já devolve dados reais do banco.
+**Para publicar com dados iniciais**: depois das migrações, importe os bares da cidade com o script do OpenStreetMap (seção abaixo). Não há mais bares de exemplo: o mapa mostra só o que está no banco.
 
    - **Login (para cadastrar bares)**: defina `NEXT_PUBLIC_SUPABASE_URL` (mesma URL do projeto) e `NEXT_PUBLIC_SUPABASE_ANON_KEY` (chave **anon** pública, em Settings → API). Elas vão para o navegador e são seguras: a migração 004 liga RLS em todas as tabelas sem políticas para `anon`/`authenticated`, então essa chave não lê nem grava nada direto no banco; todos os dados passam pelas rotas `/api` (que usam a `service_role` no servidor). No painel do Supabase:
      - Authentication → URL Configuration: coloque a URL do site (e `http://localhost:3000` para dev) em **Site URL** / **Redirect URLs**.
@@ -28,7 +28,7 @@ npm run dev
 
 Abre [http://localhost:3000](http://localhost:3000).
 
-Se o backend não estiver configurado, o mapa mostra apenas os bares mock; ao configurar Supabase, “Buscar bares” e o carregamento automático ao pan/zoom passam a usar o banco.
+Se o backend não estiver configurado, o mapa começa vazio; ao configurar Supabase, “Buscar bares” e o carregamento automático ao pan/zoom passam a usar o banco.
 
 ## Importar bares do OpenStreetMap (operador)
 

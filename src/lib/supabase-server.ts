@@ -10,7 +10,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
 if (!url || !serviceRoleKey) {
   console.warn(
-    "Supabase: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for API routes. Map data will fall back to mock/empty."
+    "Supabase: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for API routes. Map data will be empty."
   );
 }
 
