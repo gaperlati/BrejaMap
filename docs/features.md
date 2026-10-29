@@ -10,6 +10,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 - **Stack**: Next.js 15 (15.5.x), React 19 (19.2.x), TypeScript, Tailwind CSS, Google Maps JavaScript API. **Backend**: Supabase (Postgres) para venues e preços.
 - **Dados**: o mapa e a lista de bares vêm do **nosso backend** (GET /api/venues por bounds). Não há mais chamadas ao Google Places no cliente; a latência e o payload são controlados pelo nosso banco. Mock inicial em memória quando o backend não está configurado.
+- **Identidade no navegador**: favicon com caneca de cerveja escura e espuma clara sobre fundo âmbar. O Next.js registra automaticamente `src/app/icon.svg`, `src/app/favicon.ico` (16, 32 e 48 px) e `src/app/apple-icon.png` (180 px) para abas, favoritos e atalhos no iOS.
 
 ---
 
