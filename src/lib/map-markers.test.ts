@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Venue } from "../types";
-import { getMinBeerPrice } from "./venue-state";
+import { getMatchingMinPrice, getMinBeerPrice } from "./venue-state";
 import {
   clusterMapVenues,
   formatPriceLabel,
@@ -196,4 +196,33 @@ test("isolated unpriced venues are compact dots below zoom 16 and pins from 16",
 test("formatPriceLabel uses a pt-BR decimal comma", () => {
   assert.equal(formatPriceLabel(8), "R$ 8,0");
   assert.equal(formatPriceLabel(12.5), "R$ 12,5");
+});
+
+test("clusterMapVenues labels pins and clusters with the price of the filtered beer type", () => {
+  const getGarrafaMin = (v: Venue) => getMatchingMinPrice(v, { beerType: "garrafa", maxPrice: null });
+  const bottles = venue("bottles", BASE_LAT, BASE_LNG, undefined, {
+    beerPrices: [
+      { type: "chope", label: "Chope", priceBRL: 6 },
+      { type: "garrafa", label: "Garrafa", priceBRL: 9.5 },
+    ],
+  });
+  const near = venue("near", BASE_LAT + 0.00001, BASE_LNG, undefined, {
+    beerPrices: [
+      { type: "chope", label: "Chope", priceBRL: 5 },
+      { type: "garrafa", label: "Garrafa", priceBRL: 11 },
+    ],
+  });
+
+  const [single] = clusterMapVenues([bottles], { zoom: 15, selectedVenueId: null, getMinPrice: getGarrafaMin });
+  assert.equal(single.minPrice, 9.5);
+
+  const [cluster] = clusters(
+    clusterMapVenues([bottles, near], { zoom: 15, selectedVenueId: null, getMinPrice: getGarrafaMin })
+  );
+  // Unfiltered, "near" owns the spot with its R$ 5 chope; for bottles "bottles" is cheaper.
+  assert.equal(cluster.minPrice, 9.5);
+  assert.equal(cluster.id, "cluster:bottles");
+  const [unfiltered] = clusters(run([bottles, near], 15));
+  assert.equal(unfiltered.minPrice, 5);
+  assert.equal(unfiltered.id, "cluster:near");
 });

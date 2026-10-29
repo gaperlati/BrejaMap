@@ -60,6 +60,8 @@ export default function Home() {
     neighborhoods,
     hasActiveFilters,
     filteredAndSortedVenues,
+    getMatchingPrices,
+    getMinPrice: getMatchingMinPrice,
   } = useVenueFilters({ venues, mapBounds, mapCenter, userLocation });
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -195,7 +197,8 @@ export default function Home() {
             selectedVenueId={selectedVenueId}
             onSelectVenue={setSelectedVenueId}
             beerTypeLabels={BEER_TYPE_LABELS}
-            getMinPrice={getMinBeerPrice}
+            getPrices={getMatchingPrices}
+            getMinPrice={getMatchingMinPrice}
             onAddBar={() => setAddModalOpen(true)}
           />
         </aside>
@@ -216,7 +219,7 @@ export default function Home() {
                   searchMarker={searchMarker}
                   selectedVenueId={selectedVenueId}
                   onSelectVenue={setSelectedVenueId}
-                  getMinPrice={getMinBeerPrice}
+                  getMinPrice={getMatchingMinPrice}
                   onBoundsChange={handleMapBoundsChange}
                   onReady={handleMapReady}
                 />
