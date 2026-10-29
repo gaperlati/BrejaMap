@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { formatNominatimResult, searchAddress, type NominatimResult } from "@/lib/geocode";
 
 interface AddressSearchProps {
@@ -20,27 +20,39 @@ export function AddressSearch({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Request of the latest query; superseded ones are aborted before (or while) they run. */
+  const requestRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => requestRef.current?.abort(), []);
 
   const doSearch = useCallback(async (q: string) => {
     if (!q.trim()) {
       setResults([]);
       return;
     }
+    const controller = new AbortController();
+    requestRef.current = controller;
     setLoading(true);
     try {
-      const data = await searchAddress(q, { biasLocation });
+      const data = await searchAddress(q, { biasLocation, signal: controller.signal });
+      if (controller.signal.aborted) return;
       setResults(data);
       setOpen(true);
     } catch {
+      if (controller.signal.aborted) return;
       setResults([]);
     } finally {
-      setLoading(false);
+      if (requestRef.current === controller) setLoading(false);
     }
   }, [biasLocation]);
 
   const handleChange = (value: string) => {
     setQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    // Queued requests for an older query are dropped without ever reaching Nominatim.
+    requestRef.current?.abort();
+    requestRef.current = null;
+    setLoading(false);
     if (!value.trim()) {
       setResults([]);
       setOpen(false);
@@ -53,6 +65,9 @@ export function AddressSearch({
     const lat = parseFloat(r.lat);
     const lng = parseFloat(r.lon);
     const formatted = formatNominatimResult(r);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    requestRef.current?.abort();
+    setLoading(false);
     onSelectLocation(lat, lng, formatted.zoom);
     setQuery(formatted.shortLabel);
     setResults([]);

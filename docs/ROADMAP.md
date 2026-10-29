@@ -11,7 +11,7 @@ O app já possui as funcionalidades essenciais para funcionar:
 - **Mapa (Google Maps)** com marcadores de preço, busca por endereço (Nominatim), carregamento automático ao pan/zoom
 - **Filtros**: preço máximo, tipo de cerveja, bairro, happy hour, ordenação
 - **Lista e mapa**: toggle entre vistas, bottom sheet com detalhes do bar
-- **Adicionar bar**: formulário com localização via mapa/endereço, múltiplas marcas de cerveja por tipo (tipo + marca + preço)
+- **Adicionar bar**: formulário com local escolhido no mapa (pino + confirmação), localização do aparelho ou busca de endereço opcional, múltiplas marcas de cerveja por tipo (tipo + marca + preço)
 - **Editar preços**: adicionar/editar preços de cerveja com múltiplas opções por bar
 - **Backend Supabase**: persistência de venues e beer_prices, API REST
 - **Empty state amigável**: mensagem e CTA quando não há bares na região
@@ -52,6 +52,7 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 - [x] Remoção do fallback de geolocalização por IP que movia o mapa para São Paulo capital após 8 segundos.
 - [x] GET `/api/venues` pronto para áreas densas (ex.: ~700 bares na capital): preços embutidos na consulta (sem URL gigante de ids), corte em 500 priorizando bares com preço, depois adicionados por usuários e depois os mais próximos do centro, campo `truncated` e aviso “Dê mais zoom para ver todos os bares desta área”; ver [features.md](./features.md) seção 3.1
 - [x] Login com Google via Google Identity Services + `signInWithIdToken` (a janela do Google mostra o domínio do BrejaMap, não `supabase.co`), com fallback para o redirecionamento OAuth; página `/privacidade`. Pendente (dono): origens JavaScript autorizadas e Branding no Google Cloud, `NEXT_PUBLIC_GOOGLE_CLIENT_ID` no Vercel.
+- [x] “Adicionar bar” com escolha do local no mapa: pino fixo no centro de um mapa dentro do modal (arrastar ou tocar), botão “Usar minha localização” (só com ação do usuário), busca de endereço opcional que procura primeiro perto do pino (~15 km) e só depois no estado todo, endereço/bairro/cidade preenchidos pelo ponto (geocodificação reversa) e confirmação obrigatória (“Confirmar local”) antes de salvar; o endereço exato deixa de ser obrigatório. Ver [features.md](./features.md) seção 7
 
 ### Qualidade
 
