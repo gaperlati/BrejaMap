@@ -13,7 +13,7 @@ export const BEER_TYPE_LABELS: Record<BeerType, string> = {
   chope: "Chope",
   long_neck: "Long neck",
   lata: "Lata",
-  garrafa: "Garrafa",
+  garrafa: "Litrão",
   outro: "Outro",
 };
 
