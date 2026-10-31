@@ -107,7 +107,7 @@ export function AddressSearch({
         <ul
           id="address-results"
           role="listbox"
-          className="absolute top-full left-0 right-0 mt-1 py-1 rounded-lg bg-stone-800 border border-stone-700 shadow-xl z-[10000] max-h-60 overflow-y-auto"
+          className="app-scrollbar absolute top-full left-0 right-0 mt-1 py-1 rounded-lg bg-stone-800 border border-stone-700 shadow-xl z-[10000] max-h-60 overflow-y-auto"
         >
           {results.map((r) => {
             const formatted = formatNominatimResult(r);

@@ -16,6 +16,57 @@ body {
   background: var(--background);
 }
 
+/* Opt in app-owned scroll areas; keep embedded map controls native. */
+@media (forced-colors: none) {
+  /* scrollbar-color inherits; embedded widgets should keep their own defaults. */
+  .app-scrollbar > * {
+    scrollbar-color: auto;
+  }
+
+  .app-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #78716c transparent;
+  }
+
+  /* Chromium and Safari support rounded thumbs and pointer feedback. */
+  @supports selector(::-webkit-scrollbar) {
+    .app-scrollbar {
+      scrollbar-width: auto;
+      scrollbar-color: auto;
+    }
+
+    .app-scrollbar::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    .app-scrollbar::-webkit-scrollbar-track,
+    .app-scrollbar::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    .app-scrollbar::-webkit-scrollbar-thumb {
+      min-height: 32px;
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background: #78716c;
+      background-clip: padding-box;
+    }
+
+    .app-scrollbar::-webkit-scrollbar-thumb:hover {
+      background-color: #a8a29e;
+    }
+
+    .app-scrollbar::-webkit-scrollbar-thumb:active {
+      background-color: var(--accent);
+    }
+
+    .app-scrollbar::-webkit-scrollbar-button {
+      display: none;
+    }
+  }
+}
+
 /**
  * Bottom bar above iOS home indicator + Safari overlay.
  * Requires `viewportFit: "cover"` (see layout.tsx). Class used by the main nav in page.tsx.

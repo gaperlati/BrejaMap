@@ -164,7 +164,7 @@ export default function Home() {
       <div className="flex-1 flex min-h-0">
         {/* Sidebar: filters + list. No mapa = lista ocupa; no mapa = sidebar ao lado em desktop ou ao abrir Filtros */}
         <aside
-          className={`flex flex-col bg-stone-950 border-r border-stone-800 transition-all min-h-0 ${
+          className={`app-scrollbar flex flex-col bg-stone-950 border-r border-stone-800 transition-all min-h-0 ${
             viewMode === "list"
               ? "flex-1 w-full min-h-0 overflow-y-auto overscroll-y-contain sm:flex-none sm:max-w-[420px]"
               : filtersOpen

@@ -11,6 +11,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - **Stack**: Next.js 15 (15.5.x), React 19 (19.2.x), TypeScript, Tailwind CSS, Google Maps JavaScript API. **Backend**: Supabase (Postgres) para venues e preços.
 - **Dados**: o mapa e a lista de bares vêm do **nosso backend** (GET /api/venues por bounds). Não há mais chamadas ao Google Places no cliente; a latência e o payload são controlados pelo nosso banco. Sem backend configurado, o mapa começa vazio (não há mais bares de exemplo em memória).
 - **Identidade no navegador**: favicon com caneca de cerveja escura e espuma clara sobre fundo âmbar. O Next.js registra automaticamente `src/app/icon.svg`, `src/app/favicon.ico` (16, 32 e 48 px) e `src/app/apple-icon.png` (180 px) para abas, favoritos e atalhos no iOS.
+- **Barras de rolagem**: modais, detalhes do bar, lista/filtros e resultados de endereço usam barras discretas em tons de pedra, integradas ao fundo escuro. Em Chromium/Safari, o indicador é arredondado, clareia ao passar o ponteiro e fica âmbar ao arrastar; no Firefox, usa a versão nativa fina. A rolagem continua nativa, e o modo de cores forçadas mantém as barras do sistema. Estilos definidos em `src/app/globals.css` pela classe `app-scrollbar`, aplicada apenas às áreas do app.
 
 ---
 

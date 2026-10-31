@@ -86,7 +86,7 @@ export function VenueSheet({
         aria-hidden
       />
       <div
-        className="fixed bottom-0 left-0 right-0 z-[9001] bg-stone-900 border-t border-stone-700 rounded-t-2xl shadow-2xl max-h-[70vh] overflow-y-auto animate-slide-up"
+        className="app-scrollbar fixed bottom-0 left-0 right-0 z-[9001] bg-stone-900 border-t border-stone-700 rounded-t-2xl shadow-2xl max-h-[70vh] overflow-y-auto animate-slide-up"
         role="dialog"
         aria-label="Detalhes do bar"
       >
