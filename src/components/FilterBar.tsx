@@ -65,7 +65,7 @@ export function FilterBar({
           { value: "chope", label: "Chope" },
           { value: "long_neck", label: "Long neck" },
           { value: "lata", label: "Lata" },
-          { value: "garrafa", label: "Garrafa" },
+          { value: "garrafa", label: "Litrão" },
           { value: "outro", label: "Outro" },
         ]}
       />
