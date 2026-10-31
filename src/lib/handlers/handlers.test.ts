@@ -354,3 +354,38 @@ test("menu photo: gateway errors, bad JSON and timeouts map to 502/504", async (
   const empty = await readMenuPhoto(deps(db, photoEnv, gateway('{"prices":[]}').fetchImpl), photoReq(JPEG));
   assert.deepEqual(await empty.json(), { prices: [] });
 });
+
+
+test("favorite writes respect the production kill switch without blocking reads", async () => {
+  const { db, ops } = fakeDb({ users: { t: ALICE } });
+  const disabled = deps(db, { NODE_ENV: "production", USER_EDITS_ENABLED: "false" });
+  for (const favorite of [true, false]) {
+    assert.equal((await setFavorite(disabled, req(favorite ? "PUT" : "DELETE", { token: "t" }), VENUE, favorite)).status, 403);
+  }
+  assert.equal(ops.length, 0);
+  assert.equal((await listFavorites(disabled, req("GET", { token: "t" }))).status, 200);
+  assert.equal((await setFavorite(deps(db, { NODE_ENV: "production", USER_EDITS_ENABLED: "true" }), req("PUT", { token: "t" }), VENUE, true)).status, 200);
+});
+
+
+test("menu photo returns 504 when the gateway times out while reading the response body", async () => {
+  const { db } = fakeDb({ users: { t: ALICE } });
+  const fetchImpl = (async () => ({
+    ok: true,
+    json: async () => { throw new DOMException("Timed out reading body", "TimeoutError"); },
+  })) as unknown as typeof fetch;
+  const response = await readMenuPhoto(
+    deps(db, { AI_GATEWAY_API_KEY: "test-key" }, fetchImpl),
+    req("POST", { token: "t", headers: { "content-type": "image/jpeg" }, body: new Uint8Array([0xff, 0xd8, 0xff]) })
+  );
+  assert.equal(response.status, 504);
+});
+
+
+test("moderation writes respect the emergency kill switch", async () => {
+  const { db, ops } = fakeDb({ users: { t: ALICE } });
+  const disabled = deps(db, { NODE_ENV: "production", ADMIN_EMAILS: ALICE.email });
+  assert.equal((await resolveReview(disabled, req("POST", { token: "t", body: { action: "verify" } }), VENUE)).status, 403);
+  assert.equal(ops.length, 0);
+  assert.equal((await getReviewQueue(disabled, req("GET", { token: "t" }))).status, 200);
+});

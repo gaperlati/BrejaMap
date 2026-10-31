@@ -6,7 +6,7 @@
 import { isUuid } from "../ids";
 import { rowToVenue, type BeerPriceRow, type VenueRow } from "../venue-rows";
 import { isAdmin } from "../write-guards";
-import { forbidden, json, notConfigured, readJsonObject, requestUser, type HandlerDeps } from "./common";
+import { forbidden, json, notConfigured, readJsonObject, requestUser, writesBlocked, type HandlerDeps } from "./common";
 
 export const MAX_REVIEW_QUEUE = 100;
 
@@ -38,6 +38,8 @@ export async function getReviewQueue(deps: HandlerDeps, request: Request): Promi
  * "não verificados"); "verify" also clears prices_unverified (a moderator checked the prices).
  */
 export async function resolveReview(deps: HandlerDeps, request: Request, venueId: string): Promise<Response> {
+  const blocked = writesBlocked(deps.env);
+  if (blocked) return blocked;
   if (!deps.db) return notConfigured();
   if (!isAdmin(await requestUser(deps.db, request), deps.env)) return forbidden();
   if (!isUuid(venueId)) return json({ error: "Invalid venue id" }, 400);

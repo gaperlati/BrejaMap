@@ -288,7 +288,7 @@ Ao selecionar um bar no mapa ou na lista:
 - **Campos** (todos opcionais, `null` = não informado): `transmits_football`, `accepts_reservations`, `has_outdoor_area` e `opening_hours` em `venues`. “Aceita reserva” é só a informação; reserva de mesa de verdade exigiria parceria com os bares e não existe.
 - **Edição**: bloco “Sobre o bar (opcional)” em Adicionar bar e Editar preços (`src/components/VenueAttributes.tsx`): três selects Sim / Não / Não sei e “Informar horário de funcionamento” (um intervalo por dia; ao ligar, todos os dias começam 18:00–00:00 para ajustar; dia desmarcado = fechado; ao menos um dia aberto; abertura ≠ fechamento).
 - **Contrato da API**: chave ausente = não muda; `null` = volta a não informado (`parseVenueAttributesPatch`/`toRpcAttributes` em `src/lib/venue-attributes.ts`). Horário validado em `parseOpeningHours` (dias `mon`..`sun`, até 3 intervalos `HH:MM` por dia, ao menos um intervalo).
-- **Aberto agora** (`src/lib/opening-hours.ts`): calculado no fuso `America/Sao_Paulo`, com intervalos que passam da meia-noite (ex.: sexta 18:00–02:00 vale até 02:00 de sábado).
+- **Aberto agora** (`src/lib/opening-hours.ts`): calculado no fuso `America/Sao_Paulo`, com intervalos que passam da meia-noite (ex.: sexta 18:00–02:00 vale até 02:00 de sábado). O detalhe e o filtro ativo atualizam o estado a cada minuto.
 - **Marcação “não verificado”**: como já acontecia com o happy hour, qualquer edição comunitária, inclusive só de atributos, marca o bar como editado pela comunidade (`prices_unverified`, `last_edited_*`); uma chamada sem nenhuma mudança não marca.
 - **Exibição e filtros**: tags no detalhe e no card; filtros da seção 3.
 
@@ -300,7 +300,7 @@ Ao selecionar um bar no mapa ou na lista:
 
 - **Página** `/conta` (item “Minha conta” da navegação): sem login, mostra o card de login (Google ou código por e-mail; o retorno do Google e do link do e-mail volta para `/conta`); com login, mostra o e-mail, **Sair** e a lista de **favoritos** (nome, bairro/cidade, menor preço, “Como chegar” e “Remover”).
 - **Favoritar**: botão no detalhe do bar; atualiza na hora e desfaz se a API falhar.
-- **API** (login obrigatório; o usuário vem sempre do token verificado, nunca do corpo da requisição): `GET /api/favorites` (até 200, mais recentes primeiro, com preços), `PUT /api/favorites/[venueId]` e `DELETE /api/favorites/[venueId]` (idempotentes; 404 se o bar não existe; 60/10 min por usuário).
+- **API** (login obrigatório; o usuário vem sempre do token verificado, nunca do corpo da requisição): `GET /api/favorites` (até 200, mais recentes primeiro, com preços), `PUT /api/favorites/[venueId]` e `DELETE /api/favorites/[venueId]` (idempotentes; 404 se o bar não existe; 60/10 min por usuário; PUT/DELETE respeitam `USER_EDITS_ENABLED`).
 - **Dados**: tabela `favorites` (chave usuário + bar; apagada junto com a conta ou o bar), RLS sem políticas: só a API (service role) acessa.
 
 **Arquivos**: `src/app/conta/page.tsx`, `src/components/AccountView.tsx`, `src/lib/use-favorites.ts`, `src/lib/handlers/social.ts`, `src/app/api/favorites/route.ts`, `src/app/api/favorites/[venueId]/route.ts`.
@@ -333,7 +333,7 @@ Ao selecionar um bar no mapa ou na lista:
 
 - **Acesso**: só para quem está logado com e-mail **confirmado** listado em `ADMIN_EMAILS` (variável do servidor, separada por vírgulas). Sem a variável, ninguém entra (403 para todos); a página mostra “Acesso restrito a moderadores”.
 - **Fila**: bares com `needs_review` (vindos de “Sinalizar preços incorretos”), editados mais recentemente primeiro, com os preços e a data de cada um (`GET /api/admin/review-queue`, até 100).
-- **Ações** (`POST /api/admin/venues/[id]/resolve`): **Preços conferidos** (`verify`: limpa `needs_review` e “Preços não verificados”) e **Dispensar alerta** (`dismiss`: limpa só `needs_review`). Preços errados são corrigidos pelo editor normal no mapa.
+- **Ações** (`POST /api/admin/venues/[id]/resolve`, respeita `USER_EDITS_ENABLED`): **Preços conferidos** (`verify`: limpa `needs_review` e “Preços não verificados”) e **Dispensar alerta** (`dismiss`: limpa só `needs_review`). O aviso de preços não verificados segue `prices_unverified`, inclusive em bares adicionados por usuários. Preços errados são corrigidos pelo editor normal no mapa.
 
 **Arquivos**: `src/app/admin/page.tsx`, `src/components/ModerationView.tsx`, `src/lib/handlers/admin.ts`, `src/app/api/admin/review-queue/route.ts`, `src/app/api/admin/venues/[id]/resolve/route.ts`, `src/lib/write-guards.ts` (`isAdmin`).
 

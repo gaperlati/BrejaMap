@@ -159,6 +159,14 @@ function PriceLine({
 /** Stars 1–5 for signed-in users; average shown only from MIN_RATINGS_TO_SHOW ratings. */
 function RatingSection({ venue, onSaved }: { venue: Venue; onSaved?: (venue: Venue) => void }) {
   const auth = useAuthUser();
+  return <UserRatingSection key={auth.user?.id ?? "anonymous"} venue={venue} onSaved={onSaved} auth={auth} />;
+}
+
+function UserRatingSection({ venue, onSaved, auth }: {
+  venue: Venue;
+  onSaved?: (venue: Venue) => void;
+  auth: ReturnType<typeof useAuthUser>;
+}) {
   const [myScore, setMyScore] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -317,6 +325,13 @@ export function VenueSheet({
   onVenueSaved,
   favorite,
 }: VenueSheetProps) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    if (!venue?.openingHours) return;
+    setNow(new Date());
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, [venue?.id, venue?.openingHours]);
   if (!venue) return null;
 
   const minPrice = getMinPrice(venue);
@@ -325,7 +340,7 @@ export function VenueSheet({
     .filter(Boolean)
     .join(", ");
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(venue.lat + "," + venue.lng)}`;
-  const openLabel = openStatusLabel(venue.openingHours, new Date());
+  const openLabel = openStatusLabel(venue.openingHours, now);
   const priceLabel = (p: BeerPrice) => (p.label?.trim() ? p.label : beerTypeLabels[p.type]);
 
   return (
@@ -344,7 +359,7 @@ export function VenueSheet({
           <div className="w-12 h-1 rounded-full bg-stone-600" aria-hidden />
         </div>
 
-        {(venue.userAdded || venue.pricesUnverified) && (
+        {venue.pricesUnverified && (
           <div className="mx-4 mb-3 py-2.5 px-3 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-200 text-sm">
             {venue.userAdded
               ? "Preços não verificados (adicionado por um usuário)"

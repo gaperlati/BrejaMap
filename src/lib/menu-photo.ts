@@ -175,8 +175,9 @@ export async function extractMenuPrices(options: {
   let data: unknown;
   try {
     data = await res.json();
-  } catch {
-    return { ok: false, reason: "invalid_response" };
+  } catch (e) {
+    const name = (e as { name?: string })?.name;
+    return { ok: false, reason: name === "TimeoutError" || name === "AbortError" ? "timeout" : "invalid_response" };
   }
   const choice = (data as { choices?: { message?: { content?: unknown }; finish_reason?: string }[] })
     ?.choices?.[0];

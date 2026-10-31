@@ -66,6 +66,8 @@ export async function setFavorite(
   venueId: string,
   favorite: boolean
 ): Promise<Response> {
+  const blocked = writesBlocked(deps.env);
+  if (blocked) return blocked;
   const g = await guard(deps, request, venueId);
   if (g instanceof Response) return g;
   const limited = await rateLimited(g.db, favoriteRateLimitChecks(g.user.id, rateLimitSalt(deps.env)));

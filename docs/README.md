@@ -6,13 +6,11 @@ App em produção: https://brejamap.vercel.app
 
 ## Requisitos e execução local
 
-- **Node.js**: o projeto exige **Node 18.18+** (exigência do Next.js 15) (recomendado **Node 20**). Com Node 12 o `npm install` falha e o comando `next` não é encontrado.
-- **Instalar dependências**: `npm install` (após usar Node 18+ ou 20).
+- **Node.js**: use **Node 24.x**, conforme `engines` no `package.json`.
+- **Instalar dependências**: `npm install`.
 - **Desenvolvimento**: `npm run dev` → http://localhost:3000
 - **Build para produção**: `npm run build` e depois `npm run start`
-- **Testes**: `npm run test:scripts` (lógica pura e handlers das rotas, com dublês) e `npm run test:db` (migrações e funções SQL num Postgres em memória, PGlite)
-
-Se você ainda usa Node 12, instale Node 20 (por exemplo via [nodejs.org](https://nodejs.org/) ou nvm: `nvm install 20 && nvm use 20`), apague `node_modules` e rode `npm install` de novo.
+- **Testes**: `npm run test:scripts` (lógica e handlers com dublês) e `npm run test:db` (migrações e funções SQL no PGlite).
 
 ## Conteúdo
 
