@@ -77,6 +77,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 - **Chips** (header): Happy hour, Filtros (com indicador quando há filtros ativos), Buscar bares — sem rótulo textual extra ao lado do happy hour. Em telas estreitas (ex.: 375 px) os chips quebram linha em vez de ficarem cortados por rolagem horizontal.
 - **Painel de filtros**: aberto pelo chip “Filtros” no header ou pela sidebar (desktop). O chip “Filtros” fica destacado quando há filtros ativos (indicador visual).
+- **Controles dos filtros**: preço máximo sem as setas nativas de incremento, mantendo campo numérico e teclado decimal no celular. Tipo, bairro e ordenação usam menus escuros com seleção âmbar, indicador de seleção, rolagem temática e abertura acima/abaixo conforme o espaço disponível. A navegação aceita setas, Home/End, Enter/Espaço, Escape, Tab e busca pelo início do nome (sem diferenciar acentos); clicar fora fecha o menu.
 - **Chip “Buscar bares”**: carrega bares da **nossa API** (backend Supabase) na área visível (zoom ≥ 12). Carregamento automático ao pan/zoom (debounce ~150 ms). Se o backend não estiver configurado, mostra mensagem e o mapa fica vazio.
 - **Preço máximo (R$)**: filtra bares cujo menor preço seja ≤ valor (bares sem preços ficam de fora).
 - **Tipo de cerveja**: filtra bares que tenham ao menos um preço daquele tipo (bares sem preços ficam de fora).
