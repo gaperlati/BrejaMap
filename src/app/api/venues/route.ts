@@ -18,8 +18,14 @@ import {
   MAX_VENUES_PER_REQUEST,
   MAX_VENUE_CANDIDATES_PER_TIER,
 } from "@/lib/venue-server";
-import { dedupeVenuesByPlace, selectVenuesForBounds } from "@/lib/venue-selection";
+import {
+  collapseOsmNearDuplicates,
+  dedupeVenuesByPlace,
+  selectVenuesForBounds,
+} from "@/lib/venue-selection";
 import { buildCreateVenueArgs, runVenueWrite } from "@/lib/venue-writes";
+import { parseVenueAttributesPatch } from "@/lib/venue-attributes";
+import { fetchRatingSummaries, withRating } from "@/lib/venue-ratings";
 import {
   authenticateRequest,
   clientIp,
@@ -107,13 +113,15 @@ export async function GET(request: NextRequest) {
     rowToVenue(row, row.beer_prices ?? [])
   );
   const { venues, truncated } = selectVenuesForBounds(
-    dedupeVenuesByPlace(mappedVenues),
+    collapseOsmNearDuplicates(dedupeVenuesByPlace(mappedVenues)),
     { south, west, north, east },
     MAX_VENUES_PER_REQUEST,
     moreInDatabase
   );
 
-  return NextResponse.json({ venues, truncated });
+  // Ratings come from one aggregate call for the venues actually returned (none on failure).
+  const ratings = await fetchRatingSummaries(db, venues.map((v) => v.id));
+  return NextResponse.json({ venues: venues.map((v) => withRating(v, ratings.get(v.id))), truncated });
 }
 
 /**
@@ -166,6 +174,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const attributes = parseVenueAttributesPatch(body);
+  if (!attributes.ok) {
+    return NextResponse.json({ error: `Invalid ${attributes.field}` }, { status: 400 });
+  }
+
   const beerPrices = sanitizeBeerPrices(body.beerPrices);
   if (beerPrices.length === 0) {
     return NextResponse.json(
@@ -199,6 +212,7 @@ export async function POST(request: NextRequest) {
       hasHappyHour,
       happyHourDetails,
       beerPrices,
+      attributes: attributes.patch,
       createdBy: user.id,
     })
   );

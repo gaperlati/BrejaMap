@@ -83,7 +83,8 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - **Tipo de cerveja**: filtra bares que tenham ao menos um preço daquele tipo (bares sem preços ficam de fora).
 - **Bairro**: lista os bairros dos bares visíveis (ignora vazios, ordem pt-BR).
 - **Apenas happy hour**.
-- **Ordenar**: Menor preço, Maior preço, **Mais perto** e Nome. "Mais perto" usa a última localização conhecida do usuário (geolocalização do navegador); sem ela, a distância é medida a partir do centro do mapa (`distanceKm` em `src/lib/geo.ts`).
+- **Só bares que informaram** (seção 12): **Aberto agora** (pelo horário de funcionamento, no fuso de São Paulo, reavaliado a cada minuto enquanto o filtro está ligado), **Transmite futebol**, **Aceita reserva** e **Área externa**. Bares sem a informação (desconhecido) ficam de fora quando o filtro está ligado.
+- **Ordenar**: Menor preço, Maior preço, **Mais perto**, **Melhor avaliação** (média; bares com menos de 3 avaliações vão para o fim) e Nome. "Mais perto" usa a última localização conhecida do usuário (geolocalização do navegador); sem ela, a distância é medida a partir do centro do mapa (`distanceKm` em `src/lib/geo.ts`).
 
 **Arquivos**: `src/components/FilterBar.tsx`, `src/components/FilterChips.tsx`, `src/app/page.tsx`, `src/lib/use-venue-filters.ts`, `src/lib/venue-state.ts` (filtros e ordenação), `src/lib/api.ts`, `src/lib/geo.ts`.
 
@@ -92,7 +93,8 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 ## 3.1. Backend (Supabase) e fontes de dados
 
 - **Fonte de pins no mapa**: o cliente **não** chama mais o Google Places. Ao pan/zoom (idle, zoom ≥ 12) ou ao clicar em “Buscar bares”, o frontend chama **GET /api/venues?bounds=south,west,north,east**. O Next.js consulta o Supabase (tabelas `venues` e `beer_prices`) e devolve um JSON enxuto com os venues na bounding box. Isso elimina a latência e o payload pesado do Places no cliente.
-- **Deduplicação de venues no GET**: quando existem linhas repetidas no banco para o mesmo local (mesmo nome + coordenadas muito próximas), a API responde apenas uma entrada para evitar cards/pins duplicados. A priorização mantém, nessa ordem, venues adicionados por usuário, depois venues com preços e por fim o registro mais recente.
+- **Deduplicação de venues no GET**: quando existem linhas repetidas no banco para o mesmo local (mesmo nome + coordenadas iguais até ~1 m), a API responde apenas uma entrada para evitar cards/pins duplicados. A priorização mantém, nessa ordem, venues adicionados por usuário, depois venues com preços e por fim o registro mais recente (`comparePlacePriority`; antes, a data dominava a soma e o mais recente sempre vencia).
+- **Quase-duplicatas do OSM** (`collapseOsmNearDuplicates`): dois bares **do OpenStreetMap** com o mesmo nome (sem diferenciar maiúsculas/espaços) a até **25 m** um do outro aparecem como um só, com a mesma priorização. É só na resposta: nada é apagado do banco, bares adicionados por usuários nunca entram nessa junção e a importação continua idempotente. Cobre as 4 prováveis duplicatas de São Paulo listadas no ROADMAP.
 - **Persistência**: **POST /api/venues** (adicionar bar), **PATCH /api/venues/[id]** (adicionar/editar preços e happy hour) e **POST /api/venues/[id]/report** (sinalizar preços) gravam no Supabase. Se o backend não estiver configurado (503), o app usa apenas estado local (edições em memória). Qualquer **outra falha** (401 sem login, 403 com escrita desativada, 429 por rate limit, 400, 500, rede) é mostrada no próprio modal e o modal continua aberto; o app não finge mais que salvou. Mensagens em pt-BR em `saveErrorMessage` (`src/lib/api.ts`): 401 → “Faça login para adicionar um novo bar.”; 429 → “Muitas alterações em pouco tempo. Aguarde alguns minutos e tente novamente.”
 - **Validação no servidor** (`src/lib/venue-server.ts`, compartilhado pelas duas rotas):
   - GET: bounds precisam ser números finitos, ordenados, com no máximo **2°** por lado; resposta limitada a **500** venues.
@@ -103,7 +105,8 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
   - Depois da deduplicação, quando passa de 500 a API mantém primeiro os bares **com preço**, depois os **adicionados por usuários** e por fim os demais (ex.: importados do OSM), cada grupo ordenado pela **distância ao centro da bbox**. Se um grupo tiver mais de 1000 bares na bbox, só os 1000 mais recentes entram no ranking por distância (aproximação aceitável no zoom ≥ 12).
   - No cliente, enquanto a vista atual estiver `truncated`, aparece abaixo dos filtros o aviso “Dê mais zoom para ver todos os bares desta área”, que some ao aproximar o mapa. O cache por bbox (`VenueBboxCache` em `src/lib/venue-state.ts`) reutiliza uma resposta completa para qualquer vista dentro da área buscada, mas uma resposta truncada só serve para a mesma vista: ao dar zoom, o app busca de novo. O estado guarda até 1000 bares externos (`MAX_EXTERNAL_VENUES`), descartando primeiro os carregados antes, para não cortar uma resposta de 500.
   - POST: nome de 2–80 caracteres; lat/lng dentro do **estado de SP** (bbox aproximada); textos de endereço truncados em 200 caracteres.
-  - Preços (POST e PATCH): até 20 itens; tipo válido; marca 1–60 caracteres; preço > 0 e ≤ **R$ 500** (arredondado a centavos); volume opcional ≤ 5000 ml.
+  - Preços (POST e PATCH): até 20 itens; tipo válido; marca 1–60 caracteres; preço > 0 e ≤ **R$ 500** (arredondado a centavos); volume opcional, inteiro, ≤ 5000 ml (`src/lib/price-validation.ts`).
+  - Atributos (POST e PATCH, seção 12): `transmitsFootball`, `acceptsReservations`, `hasOutdoorArea` (booleano ou `null`) e `openingHours` (objeto ou `null`); chave ausente = não muda, `null` = volta a “não informado”; tipo errado → 400 `Invalid <campo>`.
   - PATCH: id precisa ser UUID; tudo é validado antes de acessar o banco; responde 404 se o bar não existe (sem alterar nada); erros do banco retornam 500 (`Failed to update venue` / `Failed to update beer prices`).
   - Mensagens de erro do banco não são devolvidas ao cliente (só logadas no servidor). No GET, qualquer falha do banco (inclusive Supabase fora do ar) responde 500 com `{ error: "Failed to load venues", venues: [] }`, e o mapa mostra uma mensagem amigável em pt-BR (`loadVenuesErrorMessage` em `src/lib/api.ts`).
 - **Escritas atômicas** (`supabase/migrations/003_atomic_venue_writes.sql`, `src/lib/venue-writes.ts`): o PATCH chama a função Postgres `update_venue_and_prices` e o POST chama `create_venue_with_prices` via `supabase.rpc`, em **uma única ida ao banco**. Cada função roda numa transação: atualizar happy hour, apagar os preços antigos e inserir os novos (ou criar o bar e seus preços) acontece por inteiro ou não acontece; um bar nunca fica com preços apagados ou sem preço por falha no meio. As funções só podem ser executadas pela `service_role`. Sem a migração 003 aplicada, as escritas retornam 500 (o log do servidor indica a migração faltante).
@@ -115,7 +118,9 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
   - **Sinalizar preços**: `POST /api/venues/[id]/report` (sem login, com rate limit) chama `flag_venue_for_review`, que marca `venues.needs_review = true`. Fila de moderação: `select * from venues where needs_review`.
   - **RLS**: `venues`, `beer_prices` e `write_rate_limits` têm RLS ligado e nenhuma política, e os privilégios de `anon`/`authenticated` foram revogados. A chave anon pública (usada só no login do navegador) não lê nem grava tabelas via PostgREST; a API usa a `service_role`, que ignora RLS. As funções só podem ser executadas pela `service_role`.
   - Sem a migração 004, POST/PATCH/report respondem 500 (o log indica a migração faltante).
-- **Schema**: `venues` (id, name, address, neighborhood, city, state, lat, lng, has_happy_hour, happy_hour_details, photo_url, created_at, user_added, source, external_id, prices_unverified, needs_review, created_by, last_edited_by, last_edited_at); `beer_prices` (id, venue_id, type, label, price_brl, volume_ml, created_at); `write_rate_limits` (bucket, key_hash, window_started_at, reset_at, hits). A API devolve `pricesUnverified`, mas nunca `created_by`/`last_edited_by`/`needs_review`. Migrações em `supabase/migrations/001_venues_and_beer_prices.sql`, `002_venues_external_id.sql` (coluna `external_id` opcional e única, usada pela importação do OSM), `003_atomic_venue_writes.sql` (funções de escrita atômica do PATCH/POST) e `004_auth_rate_limits_and_moderation.sql` (autoria, `prices_unverified`, `needs_review`, rate limit, report e RLS).
+- **Migração 005** (`supabase/migrations/005_price_freshness_and_venue_tags.sql`): `beer_prices.updated_at`, colunas de atributos em `venues`, `p_attributes` nas funções de escrita (ao substituir preços, os que não mudaram mantêm id e `updated_at`), `confirm_beer_price`, tabelas `favorites` e `ratings` (RLS sem políticas, como na 004) e `venue_rating_summaries`. Sem ela o GET continua funcionando (sem datas nem avaliações; o log registra a falha da função de avaliações), mas criar/editar bar, confirmar preço, favoritos e avaliações respondem 500. **Estado**: preparada e testada (`npm run test:db`), ainda **não aplicada em produção**; ver `docs/deploy.md`.
+- **Handlers testáveis** (`src/lib/handlers/`): as rotas novas (confirmar preço, foto do cardápio, favoritos, avaliações, moderação) só repassam o cliente Supabase e `process.env` para funções que recebem as dependências por parâmetro e devolvem `Response`, testadas com dublês em `src/lib/handlers/handlers.test.ts`.
+- **Schema**: `venues` (id, name, address, neighborhood, city, state, lat, lng, has_happy_hour, happy_hour_details, photo_url, created_at, user_added, source, external_id, prices_unverified, needs_review, created_by, last_edited_by, last_edited_at, transmits_football, accepts_reservations, has_outdoor_area, opening_hours); `beer_prices` (id, venue_id, type, label, price_brl, volume_ml, created_at, updated_at); `write_rate_limits` (bucket, key_hash, window_started_at, reset_at, hits); `favorites` (user_id, venue_id, created_at); `ratings` (user_id, venue_id, score 1–5, created_at, updated_at). A API devolve `pricesUnverified`, mas nunca `created_by`/`last_edited_by`/`needs_review`. Migrações em `supabase/migrations/001_venues_and_beer_prices.sql`, `002_venues_external_id.sql` (coluna `external_id` opcional e única, usada pela importação do OSM), `003_atomic_venue_writes.sql` (funções de escrita atômica do PATCH/POST) `004_auth_rate_limits_and_moderation.sql` (autoria, `prices_unverified`, `needs_review`, rate limit, report e RLS) e `005_price_freshness_and_venue_tags.sql` (frescor dos preços, atributos, favoritos e avaliações).
 - **Dados iniciais**: `venues` é populada offline pelo script de importação do OpenStreetMap (seção 3.3); o mapa continua consultando apenas o nosso banco.
 - **Zoom out**: quando o zoom fica **< 12**, os venues carregados da API são removidos da lista (permanecem os user-added).
 
@@ -163,7 +168,7 @@ Ao publicar o app, o Supabase começa vazio. Opções para o usuário não ficar
 
 - Na **aba Lista** (mobile), o painel de filtros e a lista compartilham **um único scroll** na sidebar (`overflow-y-auto` no `aside`): o usuário pode arrastar a partir dos filtros ou dos cards — não só na faixa da lista.
 - Lista de venues filtrados e ordenados no sidebar, limitada aos **bounds atuais do mapa** (com pequeno overscan para cobrir a área visível).
-- Cada item mostra nome, menor preço (ou “—” quando não há preços), quantidade de cervejas ou “Preços não informados”, e tag de happy hour quando aplicável.
+- Cada item mostra nome, menor preço (ou “—” quando não há preços), quantidade de cervejas ou “Preços não informados”, “Atualizado há X dias” (a atualização de preço mais recente do bar) e tags: happy hour, ⚽ Futebol, 📅 Reserva, 🌳 Área externa e a avaliação (só com 3+ notas).
 - Clique seleciona o bar e abre o bottom sheet; item selecionado destacado.
 
 **Arquivos**: `src/components/VenueList.tsx`, `src/components/VenueCard.tsx`.
@@ -175,7 +180,11 @@ Ao publicar o app, o Supabase começa vazio. Opções para o usuário não ficar
 Ao selecionar um bar no mapa ou na lista:
 
 - **Nome** e **endereço completo** (endereço, bairro, cidade, estado).
-- **Tags**: quantidade de cervejas servidas ou “Preços não informados”, “Happy hour” (se houver), até 3 preços exibidos como "Marca R$ X" ou "Tipo R$ X" quando não há marca.
+- **Favoritar** (canto superior direito): “♡ Favoritar” / “♥ Favorito” para quem está logado; sem login, o botão leva a `/conta` (seção 13). Só aparece quando o login está configurado.
+- **Tags**: quantidade de cervejas servidas ou “Preços não informados”, “Aberto agora · fecha às HH:MM” / “Fechado agora” (quando há horário), “Happy hour”, “⚽ Transmite futebol”, “📅 Aceita reserva” / “Não aceita reserva” e “🌳 Área externa”. Atributos desconhecidos não aparecem.
+- **Lista de preços** (seção 11): todos os preços (marca ou tipo, ml, valor), cada um com “Atualizado há X dias” e “Ainda é esse preço? Sim · Não, corrigir”.
+- **Horário de funcionamento**: bloco recolhível com os 7 dias (“Fechado” nos dias sem horário).
+- **Avaliação** (seção 14): média e quantidade, e estrelas 1–5 para quem está logado.
 - **Preço mínimo**: “A partir de R$ X,X” ou “—” quando não há preços.
 - **Detalhes do happy hour**: exibidos quando existem (`happyHourDetails`).
 - **Aviso “Preços não verificados”**: quando o bar foi adicionado por usuário (`userAdded`, “adicionado por um usuário”) ou teve preços/happy hour editados pela comunidade (`pricesUnverified`, vindo de `venues.prices_unverified`, “informados pela comunidade”). Persiste após recarregar a página (antes, para bares do OSM editados, só existia em memória).
@@ -186,7 +195,7 @@ Ao selecionar um bar no mapa ou na lista:
 - Fechar o sheet: toque fora (overlay escuro).
 - **Ações** (Adicionar/Editar preços quando há callback, Como chegar): sempre em **uma linha** (`whitespace-nowrap`); em telas &lt; `sm` usam `text-xs`, padding menor e, se faltar largura, **scroll horizontal** discreto (scrollbar oculta); a partir de `sm`, `flex-1` divide o espaço com `text-sm`.
 
-**Arquivos**: `src/components/VenueSheet.tsx`, `src/app/api/venues/[id]/report/route.ts`.
+**Arquivos**: `src/components/VenueSheet.tsx`, `src/app/api/venues/[id]/report/route.ts`, `src/lib/price-freshness.ts`, `src/lib/opening-hours.ts`, `src/lib/venue-ratings.ts`, `src/lib/use-favorites.ts`.
 
 ---
 
@@ -209,12 +218,13 @@ Ao selecionar um bar no mapa ou na lista:
     - **Confirmar local**: o bar nunca é salvo silenciosamente no centro do mapa. O botão **Confirmar local** marca o ponto como confirmado (“✓ Local confirmado. Mexeu no mapa? Confirme de novo.”); qualquer movimento do pino desfaz a confirmação. Pontos fora do estado de SP não podem ser confirmados (mesma caixa do servidor, `isInsideSpState` em `src/lib/geo.ts`).
     - **Mapa indisponível** (sem chave, erro ou 12 s sem carregar): o modal mostra “O mapa não carregou” e o local precisa vir de “Usar minha localização” ou da busca (sem o mapa, o centro inicial não pode ser confirmado).
   - **Corrigir endereço (opcional)**: seção recolhível com Endereço, Bairro e Cidade preenchidos a partir do pino (ex.: para incluir o número). O que o usuário digita é mantido ao mover o pino; os demais campos acompanham o pino. Se o texto digitado diferir do endereço do pino, aparece “Usar o endereço do pino”. Escolher um resultado da busca substitui tudo. A UF vem do ponto (padrão `SP`) e, sem endereço, o servidor grava “Endereço não informado”.
-  - Preços de cerveja *: lista dinâmica de entradas (tipo + marca + preço). Cada linha: dropdown de tipo (Chope, Long neck, Lata, Litrão, Outro), campo "Marca" (ex.: Brahma, Heineken) e valor em R$ (teclado decimal no celular). No celular a linha tem tipo + preço + remover e a marca embaixo, em largura total; no desktop fica tudo numa linha. Botão "Adicionar cerveja" adiciona nova linha; cada linha pode ser removida (exceto a última). Ao menos uma entrada com preço > 0 é obrigatória. Sem parágrafo explicativo acima das linhas: a legenda do campo e os próprios controles bastam (o mesmo vale para o modal de editar preços). Permite múltiplas marcas por tipo (ex.: Chope Brahma e Chope Heineken).
+  - Preços de cerveja *: lista dinâmica de entradas (tipo + marca + preço + ml opcional), compartilhada com “Editar preços” (`src/components/PriceRowsEditor.tsx`, `src/lib/price-rows.ts`). Acima da lista fica **Ler cardápio por foto** (seção 15). Cada linha: dropdown de tipo (Chope, Long neck, Lata, Litrão, Outro), campo "Marca" (ex.: Brahma, Heineken), valor em R$ (teclado decimal no celular) e volume em ml (opcional; preservado ao editar). No celular a marca fica embaixo, em largura total; no desktop fica tudo numa linha. Botão "Adicionar cerveja" adiciona nova linha; cada linha pode ser removida (exceto a última). Ao menos uma entrada com preço > 0 é obrigatória. Sem parágrafo explicativo acima das linhas: a legenda do campo e os próprios controles bastam (o mesmo vale para o modal de editar preços). Permite múltiplas marcas por tipo (ex.: Chope Brahma e Chope Heineken).
+  - **Sobre o bar (opcional)** (seção 12): Transmite futebol, Aceita reserva e Área externa / terraço (Sim / Não / Não sei) e “Informar horário de funcionamento”.
   - Checkbox “Tem happy hour” + campo “Detalhes do happy hour”
-- **Layout**: no celular o modal ocupa a tela como folha inferior (`100dvh`); no desktop é centralizado. O conteúdo rola e o rodapé com **Cancelar** / **Salvar bar** fica fixo, com o motivo de o botão estar desabilitado (“Informe o nome do bar.”, “Confirme o local do bar no mapa.”, “Aguarde o endereço do local...”, “Adicione ao menos um preço.”). `role="dialog"`, Esc fecha, e tocar fora fecha só se o toque começou fora (arrastar o mapa e soltar fora não fecha). O formulário é desmontado ao fechar, então cada abertura começa do zero.
+- **Layout**: no celular o modal ocupa a tela como folha inferior (`100dvh`); no desktop é centralizado. O conteúdo rola e o rodapé com **Cancelar** / **Salvar bar** fica fixo, com o motivo de o botão estar desabilitado (“Informe o nome do bar.”, “Confirme o local do bar no mapa.”, “Aguarde o endereço do local...”, “Adicione ao menos um preço.”, “Corrija o horário de funcionamento.”). `role="dialog"`, Esc fecha, e tocar fora fecha só se o toque começou fora (arrastar o mapa e soltar fora não fecha). O formulário é desmontado ao fechar, então cada abertura começa do zero.
 - Ao salvar: o botão mostra "Salvando..."; o bar é criado via POST e adicionado à lista; preços aparecem como “não verificados” no detalhe. Se falhar, o erro aparece no modal (ex.: "Adicionar e editar bares está temporariamente desativado" quando a escrita está bloqueada em produção) e o formulário é mantido. O modal "Adicionar preços" segue o mesmo fluxo.
 
-- **Adicionar/editar preços** (`AddPricesModal`): não exige login; se houver sessão, o token é enviado para registrar o autor. O bar passa a mostrar “Preços não verificados”.
+- **Adicionar/editar preços** (`AddPricesModal`): não exige login; se houver sessão, o token é enviado para registrar o autor. O bar passa a mostrar “Preços não verificados”. O mesmo modal edita os atributos e o horário; só os atributos que o usuário **mudou** são enviados (`diffVenueAttributes`), então abrir e salvar não sobrescreve a resposta de outra pessoa, e escolher “Não sei” num valor conhecido o apaga de propósito (`null`). Preços que não mudaram mantêm a data de atualização. O formulário parte da versão do bar no momento em que o editor foi aberto.
 
 **Arquivos**: `src/components/AddVenueModal.tsx`, `src/components/VenueLocationMap.tsx`, `src/components/VenueLocationSearch.tsx`, `src/lib/location-search.ts` (+ testes), `src/lib/venue-location.ts` (+ testes), `src/lib/use-venue-location.ts`, `src/lib/use-google-maps.ts` (carregador único do Google Maps, usado também por `Map.tsx`), `src/components/LoginCard.tsx`, `src/components/GoogleSignInButton.tsx`, `src/lib/google-identity.ts` (+ testes), `src/types/google-identity.d.ts`, `src/components/AddPricesModal.tsx`, `src/app/page.tsx`, `src/lib/use-venues-map.ts` (salvar bar/preços), `src/lib/api.ts` (`saveErrorMessage`), `src/lib/supabase-browser.ts`, `src/lib/use-auth-user.ts`, `src/lib/geocode.ts`.
 
@@ -222,9 +232,10 @@ Ao selecionar um bar no mapa ou na lista:
 
 ## 8. Navegação inferior
 
-- Barra fixa no rodapé com dois itens: **Mapa** e **Adicionar bar**.
+- Barra fixa no rodapé com três itens: **Mapa**, **Adicionar bar** e **Minha conta**.
 - “Mapa” é apenas indicador visual (sem ação além do contexto atual da tela).
 - “Adicionar bar” abre o modal de novo bar.
+- “Minha conta” abre `/conta` (seção 13).
 
 **Arquivos**: `src/app/page.tsx`.
 
@@ -243,7 +254,7 @@ Ao selecionar um bar no mapa ou na lista:
 ## 10. Política de privacidade (`/privacidade`)
 
 - Página estática em pt-BR (`src/app/privacidade/page.tsx`, com título/descrição/canonical próprios), linkada no card de login. Também é a URL a cadastrar em Google Auth Platform → Branding.
-- Descreve: conta de login no Supabase Auth (e-mail, id da conta e dados básicos de perfil do Google); autoria de bares/edições (`created_by`, `last_edited_by`, `last_edited_at`); contadores de rate limit com hash SHA-256 salgado de IP/id do usuário (IP cru nunca gravado; linhas apagadas a partir de 1 dia após expirar); geolocalização só no navegador (o servidor recebe apenas os limites do mapa); sessão no armazenamento local; terceiros (Google Maps/login, Nominatim, Supabase, Vercel); retenção e direitos (LGPD).
+- Descreve: conta de login no Supabase Auth (e-mail, id da conta e dados básicos de perfil do Google); autoria de bares/edições (`created_by`, `last_edited_by`, `last_edited_at`); favoritos e avaliações ligados à conta (apagados com ela; das notas só a média é pública); confirmações de preço sem identificação; foto do cardápio reduzida no aparelho, repassada uma vez ao Vercel AI Gateway/modelo de IA e não guardada; contadores de rate limit com hash SHA-256 salgado de IP/id do usuário (IP cru nunca gravado; linhas apagadas a partir de 1 dia após expirar); geolocalização só no navegador (o servidor recebe apenas os limites do mapa); sessão no armazenamento local; Vercel Web Analytics/Speed Insights (agregado, sem cookies) e o evento anônimo de falha do mapa; terceiros (Google Maps/login, AI Gateway + Google Gemini, Nominatim, Supabase, Vercel); retenção e direitos (LGPD).
 - Contato: `CONTACT_EMAIL` (variável só do servidor, lida no build). Sem ela, a página indica o e-mail de suporte exibido na janela de login do Google.
 - Ao mudar coleta de dados (novas tabelas, analytics, uploads de foto), atualize o texto e a data `UPDATED_AT`.
 
@@ -251,12 +262,91 @@ Ao selecionar um bar no mapa ou na lista:
 
 ---
 
+## 11. Frescor dos preços (“Atualizado há X dias” + “Ainda é esse preço?”)
+
+- **O que a data significa**: `beer_prices.updated_at` é quando o preço foi **informado ou confirmado no BrejaMap**, não quando alguém o viu no bar. Preços de antes da migração 005 receberam o próprio `created_at` (a única data conhecida). Sem data (banco sem a 005), aparece “Data de atualização desconhecida”.
+- **Rótulos** (`src/lib/price-freshness.ts`): “Atualizado hoje”, “Atualizado há 1 dia”, “Atualizado há N dias” e, a partir de 60 dias, “Atualizado há N meses”. Preços com 30 dias ou mais ficam em âmbar. No card da lista aparece a atualização mais recente do bar; no detalhe, cada preço tem a sua.
+- **Editar preserva datas**: ao salvar o editor, cada preço igual a um já gravado (tipo, marca, valor e ml) mantém id e data; só os novos ou alterados recebem a data de agora (`replace_venue_prices` na 005).
+- **“Ainda é esse preço? Sim”**: `POST /api/venues/[id]/confirm { priceId }` (sem login) chama `confirm_beer_price`, que atualiza só aquele preço e devolve o bar; o detalhe, a lista e o cache de áreas (`VenueBboxCache.replaceVenue`) passam a mostrar a nova data. Se o preço foi editado nesse meio-tempo, o id antigo não existe mais e a resposta é **404** (“Este preço mudou. Feche e abra o bar para ver a versão atual.”): uma página desatualizada nunca confirma um preço que não mostrou. Rate limit: 20/10 min por IP e 5/dia por (IP, bar), além do interruptor `USER_EDITS_ENABLED`. Confirmar não altera “Preços não verificados” nem registra quem confirmou.
+- **“Não, corrigir”**: abre o editor de preços do bar (a correção segue o fluxo normal de edição; para denunciar sem corrigir continua existindo “Sinalizar preços incorretos”).
+
+**Arquivos**: `src/lib/price-freshness.ts`, `src/lib/handlers/confirm-price.ts`, `src/app/api/venues/[id]/confirm/route.ts`, `src/components/VenueSheet.tsx`, `src/lib/use-venues-map.ts` (`handleVenueSaved`), `src/lib/venue-state.ts`.
+
+---
+
+## 12. Atributos do bar: futebol, reserva, área externa e horário
+
+- **Campos** (todos opcionais, `null` = não informado): `transmits_football`, `accepts_reservations`, `has_outdoor_area` e `opening_hours` em `venues`. “Aceita reserva” é só a informação; reserva de mesa de verdade exigiria parceria com os bares e não existe.
+- **Edição**: bloco “Sobre o bar (opcional)” em Adicionar bar e Editar preços (`src/components/VenueAttributes.tsx`): três selects Sim / Não / Não sei e “Informar horário de funcionamento” (um intervalo por dia; ao ligar, todos os dias começam 18:00–00:00 para ajustar; dia desmarcado = fechado; ao menos um dia aberto; abertura ≠ fechamento).
+- **Contrato da API**: chave ausente = não muda; `null` = volta a não informado (`parseVenueAttributesPatch`/`toRpcAttributes` em `src/lib/venue-attributes.ts`). Horário validado em `parseOpeningHours` (dias `mon`..`sun`, até 3 intervalos `HH:MM` por dia, ao menos um intervalo).
+- **Aberto agora** (`src/lib/opening-hours.ts`): calculado no fuso `America/Sao_Paulo`, com intervalos que passam da meia-noite (ex.: sexta 18:00–02:00 vale até 02:00 de sábado).
+- **Marcação “não verificado”**: como já acontecia com o happy hour, qualquer edição comunitária, inclusive só de atributos, marca o bar como editado pela comunidade (`prices_unverified`, `last_edited_*`); uma chamada sem nenhuma mudança não marca.
+- **Exibição e filtros**: tags no detalhe e no card; filtros da seção 3.
+
+**Arquivos**: `src/components/VenueAttributes.tsx`, `src/lib/venue-attributes.ts`, `src/lib/opening-hours.ts`, `src/app/api/venues/route.ts`, `src/app/api/venues/[id]/route.ts`, `supabase/migrations/005_price_freshness_and_venue_tags.sql`.
+
+---
+
+## 13. Minha conta e favoritos (`/conta`)
+
+- **Página** `/conta` (item “Minha conta” da navegação): sem login, mostra o card de login (Google ou código por e-mail; o retorno do Google e do link do e-mail volta para `/conta`); com login, mostra o e-mail, **Sair** e a lista de **favoritos** (nome, bairro/cidade, menor preço, “Como chegar” e “Remover”).
+- **Favoritar**: botão no detalhe do bar; atualiza na hora e desfaz se a API falhar.
+- **API** (login obrigatório; o usuário vem sempre do token verificado, nunca do corpo da requisição): `GET /api/favorites` (até 200, mais recentes primeiro, com preços), `PUT /api/favorites/[venueId]` e `DELETE /api/favorites/[venueId]` (idempotentes; 404 se o bar não existe; 60/10 min por usuário).
+- **Dados**: tabela `favorites` (chave usuário + bar; apagada junto com a conta ou o bar), RLS sem políticas: só a API (service role) acessa.
+
+**Arquivos**: `src/app/conta/page.tsx`, `src/components/AccountView.tsx`, `src/lib/use-favorites.ts`, `src/lib/handlers/social.ts`, `src/app/api/favorites/route.ts`, `src/app/api/favorites/[venueId]/route.ts`.
+
+---
+
+## 14. Avaliações (1 a 5)
+
+- **Quem avalia**: usuários logados, uma nota por bar (pode trocar ou remover). `GET/PUT/DELETE /api/venues/[id]/rating` (`{ score }` inteiro de 1 a 5; 30/10 min por usuário; PUT/DELETE respeitam `USER_EDITS_ENABLED`). Resposta: `{ score, ratingAvg, ratingCount }`.
+- **Exibição**: a média só aparece com **3 ou mais** avaliações (“★ 4,3 (12 avaliações)”); com menos, “Poucas avaliações (N)”. Ordenação “Melhor avaliação” usa a mesma regra.
+- **Na API do mapa**: `GET /api/venues` soma `ratingAvg`/`ratingCount` por uma chamada a `venue_rating_summaries` só para os bares devolvidos; se a função não existir ou falhar, o mapa carrega sem avaliações.
+
+**Arquivos**: `src/lib/venue-ratings.ts`, `src/lib/handlers/social.ts`, `src/app/api/venues/[id]/rating/route.ts`, `src/components/VenueSheet.tsx`.
+
+---
+
+## 15. Ler cardápio por foto (IA)
+
+- **Onde**: “📷 Ler cardápio por foto”, acima da lista de preços em Adicionar bar e em Editar preços (`src/components/MenuPhotoImport.tsx`). Exige login (é uma chamada paga); sem login, mostra o convite para entrar em `/conta`.
+- **Fluxo**: o navegador reduz a foto (lado maior ≤ 1600 px, JPEG; isso também remove metadados como a localização) e envia o arquivo cru para `POST /api/menu-photo`. Os preços lidos são **acrescentados** ao formulário (linhas vazias somem, repetidos são ignorados, máximo de 20) para o usuário conferir; **nada é salvo** até ele tocar em Salvar. Fechar o formulário ou trocar de bar cancela a leitura em andamento.
+- **Servidor** (`src/lib/handlers/menu-photo.ts`, `src/lib/menu-photo.ts`): interruptor `USER_EDITS_ENABLED` → `AI_GATEWAY_API_KEY` e banco configurados (senão **503**) → login (**401**) → tipo declarado JPEG/PNG/WebP (**415**) → tamanho até 4 MB, lido do corpo com limite real, não só pelo `Content-Length` (**413**) → assinatura do arquivo (magic bytes) igual ao tipo declarado (**415**) → rate limit 10/hora por usuário, 15/hora por IP e orçamento do site de 200/dia (`MENU_PHOTO_DAILY_LIMIT`), falhando fechado (**429**/**500**) → uma chamada ao Vercel AI Gateway (`POST https://ai-gateway.vercel.sh/v1/chat/completions`, `response_format` `json_schema` estrito, `temperature` 0, `max_tokens` 2000, timeout 25 s → **504**; erro do gateway ou JSON inválido → **502**). A resposta passa pela mesma validação de preços do resto da API. O servidor não busca URLs enviadas pelo cliente e não guarda a foto.
+- **Modelo**: `google/gemini-2.5-flash-lite` por padrão (visão + saída estruturada, um dos mais baratos do catálogo do AI Gateway em 31/10/2026); `MENU_PHOTO_MODEL` troca. Confira os IDs com `curl https://ai-gateway.vercel.sh/v1/models` antes de mudar.
+- **Pendente (dono)**: criar a chave do AI Gateway e definir `AI_GATEWAY_API_KEY` no Vercel; até lá o botão responde “A leitura de cardápio por foto ainda não está disponível”.
+
+**Arquivos**: `src/components/MenuPhotoImport.tsx`, `src/components/PriceRowsEditor.tsx`, `src/lib/price-rows.ts`, `src/lib/menu-photo.ts`, `src/lib/handlers/menu-photo.ts`, `src/app/api/menu-photo/route.ts`.
+
+---
+
+## 16. Moderação (`/admin`)
+
+- **Acesso**: só para quem está logado com e-mail **confirmado** listado em `ADMIN_EMAILS` (variável do servidor, separada por vírgulas). Sem a variável, ninguém entra (403 para todos); a página mostra “Acesso restrito a moderadores”.
+- **Fila**: bares com `needs_review` (vindos de “Sinalizar preços incorretos”), editados mais recentemente primeiro, com os preços e a data de cada um (`GET /api/admin/review-queue`, até 100).
+- **Ações** (`POST /api/admin/venues/[id]/resolve`): **Preços conferidos** (`verify`: limpa `needs_review` e “Preços não verificados”) e **Dispensar alerta** (`dismiss`: limpa só `needs_review`). Preços errados são corrigidos pelo editor normal no mapa.
+
+**Arquivos**: `src/app/admin/page.tsx`, `src/components/ModerationView.tsx`, `src/lib/handlers/admin.ts`, `src/app/api/admin/review-queue/route.ts`, `src/app/api/admin/venues/[id]/resolve/route.ts`, `src/lib/write-guards.ts` (`isAdmin`).
+
+---
+
+## 17. Estatísticas e monitoramento
+
+- **Vercel Web Analytics e Speed Insights** (`<Analytics />` e `<SpeedInsights />` em `src/app/layout.tsx`): visitas e Web Vitals agregados, sem cookies. Só coletam depois de ativados no painel do projeto na Vercel (pendente, dono).
+- **Falha do mapa**: `Map.tsx` envia o evento `map_load_error` (`reason`: `script_error`, `timeout` ou `missing_key`) ao Web Analytics.
+- **Erros de API**: todas as rotas registram falhas do banco/AI Gateway com `console.error` e respondem 5xx sem detalhes internos; acompanhe em Vercel → Logs (filtro por status 5xx). Roteiro em `docs/deploy.md`.
+
+**Arquivos**: `src/app/layout.tsx`, `src/components/Map.tsx`, `docs/deploy.md`.
+
+---
+
 ## Modelo de dados (resumo)
 
-- **Venue**: id, name, address, neighborhood, city, state, lat, lng, beerPrices (pode ser [] para lugares do Google), hasHappyHour, happyHourDetails?, photoUrl?, createdAt, userAdded?, pricesUnverified?, fromOsm?, fromGoogle?.
-- **BeerPrice**: type (BeerType), label (marca/nome, ex.: "Brahma" ou "Chope" quando genérico), priceBRL, volumeMl?.
+- **Venue**: id, name, address, neighborhood, city, state, lat, lng, beerPrices (pode ser [] para lugares do Google), hasHappyHour, happyHourDetails?, photoUrl?, createdAt, userAdded?, pricesUnverified?, fromOsm?, fromGoogle?, transmitsFootball?, acceptsReservations?, hasOutdoorArea?, openingHours?, ratingAvg?, ratingCount? (atributos ausentes = não informados).
+- **BeerPrice**: id? (do banco; usado por “Ainda é esse preço?”), updatedAt?, type (BeerType), label (marca/nome, ex.: "Brahma" ou "Chope" quando genérico), priceBRL, volumeMl?.
+- **OpeningHours**: `{ mon?..sun?: { open: "HH:MM", close: "HH:MM" }[] }` no horário de São Paulo; dia ausente = fechado; `close <= open` = fecha depois da meia-noite.
 - **BeerType**: `"chope"` | `"long_neck"` | `"lata"` | `"garrafa"` | `"outro"`. O tipo `"garrafa"` é exibido na interface como "Litrão".
-- **SortOption**: `"price_asc"` | `"price_desc"` | `"distance"` | `"name"`.
+- **SortOption**: `"price_asc"` | `"price_desc"` | `"distance"` | `"rating"` | `"name"`.
 
 **Arquivos**: `src/types/index.ts`, `src/data/venues.ts`.
 

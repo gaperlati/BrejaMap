@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 /** Last time the text below changed (shown to visitors). */
-const UPDATED_AT = "28 de outubro de 2026";
+const UPDATED_AT = "31 de outubro de 2026";
 
 /** Owner's contact for privacy requests (server-only env; read at build time). */
 const contactEmail = process.env.CONTACT_EMAIL?.trim() || null;
@@ -42,13 +42,15 @@ export default function PrivacyPage() {
         <p>
           O BrejaMap é um mapa colaborativo de preços de cerveja em bares. Coletamos o mínimo necessário
           para o mapa funcionar e para evitar spam. Não vendemos dados, não exibimos anúncios e não usamos
-          ferramentas de rastreamento ou analytics.
+          cookies de rastreamento. Medimos o uso de forma agregada e sem cookies (veja “Serviços de
+          terceiros” abaixo).
         </p>
 
         <Section title="O que coletamos">
           <ul className="list-disc space-y-2 pl-5">
             <li>
-              <strong className="text-stone-100">Conta de login</strong> (só para quem cadastra um bar):
+              <strong className="text-stone-100">Conta de login</strong> (opcional; necessária para
+              cadastrar bar, favoritar, avaliar e ler cardápio por foto):
               ao entrar com o Google ou com código por e-mail, nosso provedor de autenticação (Supabase Auth)
               guarda seu e-mail, um identificador da conta e, no caso do Google, os dados básicos de perfil
               que o Google envia (como nome e foto). O BrejaMap usa apenas o identificador e o e-mail; nome e
@@ -61,10 +63,26 @@ export default function PrivacyPage() {
               mostrados no app.
             </li>
             <li>
+              <strong className="text-stone-100">Favoritos e avaliações</strong>: os bares que você favorita
+              e as notas (1 a 5) que você dá ficam ligados à sua conta. Os favoritos só você vê; das notas,
+              o app mostra apenas a média e a quantidade de cada bar, nunca quem avaliou.
+            </li>
+            <li>
+              <strong className="text-stone-100">Confirmações de preço</strong>: ao tocar em “Ainda é esse
+              preço? Sim”, só a data de atualização daquele preço muda. Não guardamos quem confirmou.
+            </li>
+            <li>
+              <strong className="text-stone-100">Foto do cardápio</strong> (só se você usar “Ler cardápio
+              por foto”): a imagem é reduzida no seu aparelho (o que também remove dados como a localização
+              da foto), enviada ao nosso servidor e repassada uma única vez, pelo Vercel AI Gateway, a um
+              modelo de IA que lê os preços. O BrejaMap não guarda a foto; apenas os preços que você revisar
+              e salvar ficam no mapa. Não envie fotos com pessoas ou dados pessoais.
+            </li>
+            <li>
               <strong className="text-stone-100">Proteção contra abuso</strong>: para limitar cadastros,
-              edições e denúncias em excesso, guardamos contadores temporários identificados por um hash
-              SHA-256 com chave secreta (salt) do seu endereço IP e, ao cadastrar um bar, do identificador
-              da sua conta. O IP em si nunca é gravado nesses contadores nem nos dados de bares e preços.
+              edições, confirmações, denúncias, avaliações, favoritos e leituras de cardápio em excesso,
+              guardamos contadores temporários identificados por um hash SHA-256 com chave secreta (salt) do
+              seu endereço IP e, quando há login, do identificador da sua conta. O IP em si nunca é gravado nesses contadores nem nos dados de bares e preços.
             </li>
             <li>
               <strong className="text-stone-100">Localização</strong>: se você permitir, o navegador informa
@@ -96,6 +114,16 @@ export default function PrivacyPage() {
               .
             </li>
             <li>
+              <strong className="text-stone-100">Vercel AI Gateway e provedor do modelo de IA</strong>
+              (atualmente o Google Gemini): recebem a foto do cardápio só quando você usa “Ler cardápio por
+              foto”, para extrair os preços, e a tratam conforme as políticas deles.
+            </li>
+            <li>
+              <strong className="text-stone-100">Vercel Web Analytics e Speed Insights</strong>: contam
+              visitas às páginas e medem o desempenho de carregamento de forma agregada, sem cookies e sem
+              identificar você; também registramos de forma anônima quando o mapa falha ao carregar.
+            </li>
+            <li>
               <strong className="text-stone-100">OpenStreetMap (Nominatim)</strong>: o texto digitado em
               “Buscar endereço” é enviado diretamente do seu navegador ao serviço de busca do OpenStreetMap.
             </li>
@@ -110,8 +138,9 @@ export default function PrivacyPage() {
 
         <Section title="Para que usamos">
           <p>
-            Apenas para permitir o login, registrar quem cadastrou ou editou cada bar (moderação e combate a
-            spam) e limitar abusos. Não usamos seus dados para marketing nem os compartilhamos além dos
+            Apenas para permitir o login, guardar seus favoritos e avaliações, ler cardápios quando você
+            pede, registrar quem cadastrou ou editou cada bar (moderação e combate a spam), limitar abusos e
+            entender, de forma agregada, se o app está funcionando bem. Não usamos seus dados para marketing nem os compartilhamos além dos
             serviços listados acima.
           </p>
         </Section>
@@ -120,8 +149,12 @@ export default function PrivacyPage() {
           <ul className="list-disc space-y-2 pl-5">
             <li>Conta de login: enquanto ela existir, até você pedir a exclusão.</li>
             <li>
-              Contadores anti-abuso: duram de 10 minutos a 1 hora e são apagados automaticamente a partir de um
+              Contadores anti-abuso: duram de 10 minutos a 1 dia e são apagados automaticamente a partir de um
               dia depois de expirar.
+            </li>
+            <li>Favoritos e avaliações: até você removê-los ou excluir a conta (são apagados junto com ela).</li>
+            <li>
+              Foto do cardápio: não é guardada pelo BrejaMap; existe só durante a leitura.
             </li>
             <li>
               Bares e preços: continuam públicos no mapa. Se sua conta for excluída, eles permanecem, mas

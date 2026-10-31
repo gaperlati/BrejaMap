@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -55,6 +57,9 @@ export default function RootLayout({
     <html lang="pt-BR" className={plusJakarta.variable}>
       <body className="antialiased min-h-screen bg-stone-950 text-stone-100 font-sans">
         {children}
+        {/* Cookieless page views and Web Vitals; only active on Vercel when enabled in the dashboard. */}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

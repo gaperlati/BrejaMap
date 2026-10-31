@@ -1,6 +1,8 @@
 "use client";
 
 import type { BeerPrice, BeerType, Venue } from "@/types";
+import { venueFreshnessLabel } from "@/lib/price-freshness";
+import { MIN_RATINGS_TO_SHOW, ratingLabel } from "@/lib/venue-ratings";
 
 interface VenueCardProps {
   venue: Venue;
@@ -53,11 +55,18 @@ export function VenueCard({
       <p className="text-amber-400 font-medium text-sm mt-1">
         {Number.isFinite(minPrice) ? `A partir de R$ ${minPrice.toFixed(2)}` : "—"}
       </p>
-      {venue.hasHappyHour && (
-        <span className="inline-block mt-1 text-xs text-amber-600">
-          🎉 Happy hour
-        </span>
+      {venueFreshnessLabel(venue.beerPrices) && (
+        <p className="text-xs text-stone-500">{venueFreshnessLabel(venue.beerPrices)}</p>
       )}
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+        {venue.hasHappyHour && <span className="text-amber-600">🎉 Happy hour</span>}
+        {venue.transmitsFootball === true && <span className="text-stone-400">⚽ Futebol</span>}
+        {venue.acceptsReservations === true && <span className="text-stone-400">📅 Reserva</span>}
+        {venue.hasOutdoorArea === true && <span className="text-stone-400">🌳 Área externa</span>}
+        {(venue.ratingCount ?? 0) >= MIN_RATINGS_TO_SHOW && (
+          <span className="text-stone-400">{ratingLabel(venue)}</span>
+        )}
+      </div>
     </button>
   );
 }

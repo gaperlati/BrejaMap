@@ -21,7 +21,8 @@ import {
   mergeExternalVenues,
   VenueBboxCache,
 } from "@/lib/venue-state";
-import type { Venue } from "@/types";
+import type { Venue, VenueAttributesPatch } from "@/types";
+import { applyVenueAttributesPatch } from "@/lib/venue-attributes";
 
 /** Zoom threshold: allow places search when zoom >= this. */
 const PLACES_ZOOM_THRESHOLD = 12;
@@ -64,6 +65,8 @@ export function useVenuesMap() {
   /** Set once the user pans/zooms, searches or locates; startup geolocation then won't recenter. */
   const userInteractedRef = useRef(false);
 
+  /** Responses per area; edits patch it (`replaceVenue`) so cached views never go stale. */
+  const [areaCache] = useState(() => new VenueBboxCache(PLACES_CACHE_MAX_ENTRIES));
   /** Cache + debounce + latest-wins loading of the venues of the current area. */
   const [loader] = useState(() =>
     createVenueAreaLoader({
@@ -72,7 +75,7 @@ export function useVenuesMap() {
           venues: apiVenues.map(apiVenueToVenue),
           truncated,
         })),
-      cache: new VenueBboxCache(PLACES_CACHE_MAX_ENTRIES),
+      cache: areaCache,
       minZoom: PLACES_ZOOM_THRESHOLD,
       debounceMs: AUTO_LOAD_DEBOUNCE_MS,
       overscanFactor: OVERSCAN_FACTOR,
@@ -249,6 +252,10 @@ export function useVenuesMap() {
           state: venue.state,
           lat: venue.lat,
           lng: venue.lng,
+          transmitsFootball: venue.transmitsFootball,
+          acceptsReservations: venue.acceptsReservations,
+          hasOutdoorArea: venue.hasOutdoorArea,
+          openingHours: venue.openingHours,
           beerPrices: venue.beerPrices,
           hasHappyHour: venue.hasHappyHour,
           happyHourDetails: venue.happyHourDetails,
@@ -266,22 +273,45 @@ export function useVenuesMap() {
     setVenues((prev) => [...prev, saved]);
   }, []);
 
-  const handleUpdateVenuePrices = useCallback(async (updatedVenue: Venue) => {
-    let saved: Venue;
-    try {
-      saved = apiVenueToVenue(
-        await updateVenuePrices(updatedVenue.id, {
-          beerPrices: updatedVenue.beerPrices,
-          hasHappyHour: updatedVenue.hasHappyHour,
-          happyHourDetails: updatedVenue.happyHourDetails,
-        }, await getAccessToken())
-      );
-    } catch (e) {
-      if ((e as ApiError).status !== 503) throw new Error(saveErrorMessage(e));
-      saved = updatedVenue;
-    }
-    setVenues((prev) => prev.map((v) => (v.id === updatedVenue.id ? saved : v)));
-  }, []);
+  /**
+   * Puts a venue saved by the API (edit, "Ainda é esse preço? Sim", rating) into state and into
+   * every cached area, so a later pan back to a cached view shows the saved version.
+   */
+  const handleVenueSaved = useCallback((saved: Venue) => {
+    areaCache.replaceVenue(saved);
+    setVenues((prev) => prev.map((v) => (v.id === saved.id ? saved : v)));
+  }, [areaCache]);
+
+  /** `attributes` holds only what the user changed (absent = unchanged, null = clear). */
+  const handleUpdateVenuePrices = useCallback(
+    async ({ venue: updatedVenue, attributes }: { venue: Venue; attributes: VenueAttributesPatch }) => {
+      let saved: Venue;
+      try {
+        saved = apiVenueToVenue(
+          await updateVenuePrices(
+            updatedVenue.id,
+            {
+              beerPrices: updatedVenue.beerPrices.map(({ type, label, priceBRL, volumeMl }) => ({
+                type,
+                label,
+                priceBRL,
+                volumeMl,
+              })),
+              hasHappyHour: updatedVenue.hasHappyHour,
+              happyHourDetails: updatedVenue.happyHourDetails,
+              ...attributes,
+            },
+            await getAccessToken()
+          )
+        );
+      } catch (e) {
+        if ((e as ApiError).status !== 503) throw new Error(saveErrorMessage(e));
+        saved = applyVenueAttributesPatch(updatedVenue, attributes);
+      }
+      handleVenueSaved(saved);
+    },
+    [handleVenueSaved]
+  );
 
   return {
     venues,
@@ -301,5 +331,6 @@ export function useVenuesMap() {
     handleLocateMe,
     handleAddVenue,
     handleUpdateVenuePrices,
+    handleVenueSaved,
   };
 }

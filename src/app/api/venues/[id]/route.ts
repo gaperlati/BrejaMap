@@ -10,6 +10,8 @@ import {
   MAX_HAPPY_HOUR_DETAILS_LEN,
 } from "@/lib/venue-server";
 import { buildUpdateVenueArgs, runVenueWrite } from "@/lib/venue-writes";
+import { parseVenueAttributesPatch } from "@/lib/venue-attributes";
+import { fetchRatingSummaries, withRating } from "@/lib/venue-ratings";
 import {
   authenticateRequest,
   clientIp,
@@ -18,7 +20,9 @@ import {
 } from "@/lib/write-guards";
 
 /**
- * PATCH /api/venues/[id] - Update venue (e.g. add/edit beer prices, happy hour).
+ * PATCH /api/venues/[id] - Update venue (beer prices, happy hour, attributes). Attribute keys
+ * (transmitsFootball, acceptsReservations, hasOutdoorArea, openingHours) are optional: absent =
+ * unchanged, null = back to unknown.
  * Login is optional: a valid Bearer token only records who edited. Rate-limited per IP and per
  * (IP, venue) (429); the venue's prices are marked unverified.
  */
@@ -58,6 +62,11 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid happyHourDetails" }, { status: 400 });
   }
 
+  const attributes = parseVenueAttributesPatch(body);
+  if (!attributes.ok) {
+    return NextResponse.json({ error: `Invalid ${attributes.field}` }, { status: 400 });
+  }
+
   const wantsPriceUpdate = Array.isArray(body.beerPrices) && body.beerPrices.length > 0;
   const beerPrices = wantsPriceUpdate ? sanitizeBeerPrices(body.beerPrices) : [];
   if (wantsPriceUpdate && beerPrices.length === 0) {
@@ -88,6 +97,7 @@ export async function PATCH(
         hasHappyHour: typeof body.hasHappyHour === "boolean" ? body.hasHappyHour : undefined,
         happyHourDetails: cleanString(body.happyHourDetails, MAX_HAPPY_HOUR_DETAILS_LEN),
         beerPrices,
+        attributes: attributes.patch,
       },
       user?.id ?? null
     )
@@ -103,5 +113,6 @@ export async function PATCH(
     );
   }
 
-  return NextResponse.json({ venue: result.venue });
+  const ratings = await fetchRatingSummaries(supabase, [id]);
+  return NextResponse.json({ venue: withRating(result.venue, ratings.get(id)) });
 }

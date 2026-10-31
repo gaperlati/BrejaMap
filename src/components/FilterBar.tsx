@@ -3,8 +3,18 @@
 import { useId } from "react";
 import type { PriceFilter, BeerType, SortOption } from "@/types";
 import { FilterSelect } from "./FilterSelect";
+import type { TagFilters } from "@/lib/use-venue-filters";
+
+const TAG_FILTERS: { key: keyof TagFilters; label: string }[] = [
+  { key: "openNowOnly", label: "Aberto agora" },
+  { key: "footballOnly", label: "Transmite futebol" },
+  { key: "reservationsOnly", label: "Aceita reserva" },
+  { key: "outdoorOnly", label: "Área externa" },
+];
 
 interface FilterBarProps {
+  tagFilters: TagFilters;
+  onTagFilterChange: (key: keyof TagFilters, value: boolean) => void;
   maxPrice: PriceFilter;
   onMaxPriceChange: (v: PriceFilter) => void;
   beerType: BeerType | "";
@@ -20,6 +30,8 @@ interface FilterBarProps {
 }
 
 export function FilterBar({
+  tagFilters,
+  onTagFilterChange,
   maxPrice,
   onMaxPriceChange,
   beerType,
@@ -86,6 +98,23 @@ export function FilterBar({
         />
         <span className="text-sm text-stone-300">Apenas happy hour</span>
       </label>
+
+      <fieldset>
+        <legend className="block text-xs font-medium text-stone-500 mb-1">Só bares que informaram</legend>
+        <div className="grid grid-cols-2 gap-2">
+          {TAG_FILTERS.map(({ key, label }) => (
+            <label key={key} className="flex items-center gap-2 cursor-pointer text-sm text-stone-300">
+              <input
+                type="checkbox"
+                checked={tagFilters[key]}
+                onChange={(e) => onTagFilterChange(key, e.target.checked)}
+                className="rounded border-stone-600 bg-stone-800 text-amber-500 focus:ring-amber-500"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <FilterSelect
         label="Ordenar"

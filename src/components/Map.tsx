@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GoogleMap, Marker } from "@react-google-maps/api";
+import { track } from "@vercel/analytics";
 import type { Venue } from "@/types";
 import { useGoogleMaps } from "@/lib/use-google-maps";
 import { createMapHandle, type MapBounds, type MapHandle } from "@/lib/mapHandle";
@@ -212,6 +213,12 @@ export function Map({
 
   // If the script doesn't finish loading in 12s, show a hint and retry option
   const { isLoaded, loadError, timedOut: loadTimeout, hasApiKey: apiKey } = useGoogleMaps();
+
+  // Monitoring: count map load failures (Vercel Web Analytics custom event, no personal data).
+  const mapFailure = loadError ? "script_error" : loadTimeout ? "timeout" : !apiKey ? "missing_key" : null;
+  useEffect(() => {
+    if (mapFailure) track("map_load_error", { reason: mapFailure });
+  }, [mapFailure]);
 
   const onLoad = useCallback((mapInstance: google.maps.Map) => {
     lastReportedRef.current = "";

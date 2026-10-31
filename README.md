@@ -1,5 +1,7 @@
 # BrejaMap
 
+**No ar**: https://brejamap.vercel.app
+
 Mapa de preços de cerveja para o estado de São Paulo, com foco no interior (o mapa abre em São Carlos quando não há localização do usuário). Encontre bares com os melhores preços, filtre por tipo, bairro e happy hour.
 
 ## Configuração
@@ -7,7 +9,7 @@ Mapa de preços de cerveja para o estado de São Paulo, com foco no interior (o 
 1. **Variáveis de ambiente**
    - Copie `.env.example` para `.env.local` (lá estão todas as variáveis, com comentários). No Vercel, defina as mesmas em Project Settings → Environment Variables ou use `vercel env pull .env.local`.
    - **Mapa**: em [Google Cloud Console](https://console.cloud.google.com/apis/credentials), crie uma chave e ative **Maps JavaScript API**. Defina `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
-   - **Backend (bares no mapa)**: crie um projeto em [Supabase](https://supabase.com), em Settings → API copie URL e **service_role** key. Defina `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`. Rode, em ordem, os SQLs de `supabase/migrations/` no SQL Editor do Supabase: `001_venues_and_beer_prices.sql` (tabelas), `002_venues_external_id.sql` (coluna `external_id`, usada pela importação do OSM) `003_atomic_venue_writes.sql` (funções `update_venue_and_prices` e `create_venue_with_prices`, que gravam bar + preços numa única transação) e `004_auth_rate_limits_and_moderation.sql` (autoria, rate limit, sinalização de preços e RLS em todas as tabelas; sem 003 e 004, adicionar bar, editar preços e sinalizar retornam 500). Todos podem ser rodados mais de uma vez, sempre nessa ordem.
+   - **Backend (bares no mapa)**: crie um projeto em [Supabase](https://supabase.com), em Settings → API copie URL e **service_role** key. Defina `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`. Rode, em ordem, os SQLs de `supabase/migrations/` no SQL Editor do Supabase: `001_venues_and_beer_prices.sql` (tabelas), `002_venues_external_id.sql` (coluna `external_id`, usada pela importação do OSM) `003_atomic_venue_writes.sql` (funções `update_venue_and_prices` e `create_venue_with_prices`, que gravam bar + preços numa única transação) e `004_auth_rate_limits_and_moderation.sql` (autoria, rate limit, sinalização de preços e RLS em todas as tabelas; sem 003 e 004, adicionar bar, editar preços e sinalizar retornam 500) e `005_price_freshness_and_venue_tags.sql` (data de atualização por preço, “Ainda é esse preço?”, futebol/reserva/área externa/horário, favoritos e avaliações; sem ela, editar/criar bar e as rotas novas retornam 500, mas o mapa continua carregando). Todos podem ser rodados mais de uma vez, sempre nessa ordem. Em produção, aplique a migração **antes** de publicar o código que depende dela.
 
 **Para publicar com dados iniciais**: depois das migrações, importe os bares da cidade com o script do OpenStreetMap (seção abaixo). Não há mais bares de exemplo: o mapa mostra só o que está no banco.
 
@@ -17,7 +19,9 @@ Mapa de preços de cerveja para o estado de São Paulo, com foco no interior (o 
      - Authentication → Email Templates → **Magic Link**: inclua `{{ .Token }}` no texto para o e-mail trazer o código de 6 dígitos além do link (o modal aceita os dois).
      - Sem essas variáveis, o card de login não aparece e criar bar responde 401 sempre que o backend estiver configurado. Editar preços e sinalizar preços não exigem login.
    - **Escrita em produção**: adicionar bar, editar preços e sinalizar preços ficam **bloqueados em produção** (403) até `USER_EDITS_ENABLED=true` — é o interruptor geral: voltar para `false` desliga todas as escritas na hora. Antes de ligar, aplique as migrações 003 e 004. Em `npm run dev` a escrita sempre funciona (mas criar bar continua exigindo login quando o backend está configurado).
-   - **Anti-abuso**: escritas têm rate limit no Postgres (tabela `write_rate_limits`), por IP com hash SHA-256 + sal (`RATE_LIMIT_SALT`, opcional; padrão: a service role key) — o IP nunca é gravado. Limites: editar preços 10/10 min por IP e 3/10 min por (IP, bar); criar bar 5/hora por usuário e por IP; sinalizar 5/10 min por IP. Excedeu → 429 com `Retry-After`. Bares sinalizados ficam com `needs_review = true` (fila: `select * from venues where needs_review`).
+   - **Anti-abuso**: escritas têm rate limit no Postgres (tabela `write_rate_limits`), por IP com hash SHA-256 + sal (`RATE_LIMIT_SALT`, opcional; padrão: a service role key) — o IP nunca é gravado. Limites: editar preços 10/10 min por IP e 3/10 min por (IP, bar); criar bar 5/hora por usuário e por IP; sinalizar 5/10 min por IP; confirmar preço 20/10 min por IP e 5/dia por (IP, bar); favoritos 60/10 min e avaliações 30/10 min por usuário; ler cardápio por foto 10/hora por usuário, 15/hora por IP e 200/dia no site todo (`MENU_PHOTO_DAILY_LIMIT`). Excedeu → 429 com `Retry-After`. Bares sinalizados ficam com `needs_review = true` e aparecem em `/admin` para quem estiver em `ADMIN_EMAILS`.
+   - **Ler cardápio por foto** (opcional): defina `AI_GATEWAY_API_KEY` (Vercel → AI Gateway). Sem ela o botão responde que o recurso ainda não está disponível. O modelo padrão é `google/gemini-2.5-flash-lite` (`MENU_PHOTO_MODEL` troca; confira os IDs em `curl https://ai-gateway.vercel.sh/v1/models`).
+   - **Estatísticas**: Vercel Web Analytics e Speed Insights já estão no código (sem cookies); ative-os no painel do projeto na Vercel para começar a coletar.
 
 2. Instale e rode:
 
@@ -48,8 +52,9 @@ npm run import:osm -- --bbox -22.08,-47.96,-21.96,-47.82 --city "São Carlos"
 # Gravar (exige --write, escopo explícito e SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY no ambiente)
 npx tsx --env-file=.env.local scripts/import-osm.ts --preset sao-carlos --write
 
-# Testes do script (sem rede e sem banco)
+# Testes (sem rede e sem banco) e testes das migrações num Postgres em memória (PGlite)
 npm run test:scripts
+npm run test:db
 ```
 
 - **Sem argumentos** o script usa o preset `sao-carlos` (área urbana de São Carlos, cidade de lançamento) em dry-run.
@@ -67,7 +72,10 @@ npm run test:scripts
 - **Mapa (Google Maps)** com marcadores em formato de preço (balão “R$ X,X”)
 - **Bares no mapa**: carregamento automático ao pan/zoom (debounce 2 s) ou botão “Buscar bares”; dados vêm do **nosso backend** (Supabase), não do Google Places no cliente
 - **Pesquisar endereço** para centralizar o mapa
-- **Filtros**: preço máximo, tipo de cerveja, bairro, happy hour
+- **Filtros**: preço máximo, tipo de cerveja, bairro, happy hour, aberto agora, futebol, reserva, área externa; ordenação por preço, distância, avaliação ou nome
 - **Toggle Mapa / Lista**, **bottom sheet** ao clicar em um bar, **Adicionar bar** e **Adicionar/editar preços** (persistem no backend quando configurado)
+- **Frescor dos preços**: “Atualizado há X dias” por preço e “Ainda é esse preço? Sim / Não, corrigir”
+- **Ler cardápio por foto**: a IA preenche o formulário de preços para revisão (nada é salvo sem confirmar)
+- **Minha conta** (`/conta`): favoritos; **avaliação** de 1 a 5; **moderação** em `/admin`
 
 **Documentação**: pasta [docs/](docs/). Ver **MGB_FEATURES_AND_BRAZIL.md** para comparação com MisterGoodBeer.

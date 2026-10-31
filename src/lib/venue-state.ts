@@ -8,6 +8,9 @@
 import type { BeerPrice, BeerType, PriceFilter, SortOption, Venue } from "../types";
 import type { VenueFromAPI } from "./api";
 import { distanceKm, expandBounds, type Bounds } from "./geo";
+import { openStatus } from "./opening-hours";
+import { ratingSortValue } from "./venue-ratings";
+import { comparePlacePriority } from "./venue-selection";
 
 export const BEER_TYPE_LABELS: Record<BeerType, string> = {
   chope: "Chope",
@@ -74,6 +77,18 @@ export class VenueBboxCache {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Swaps every cached copy of `venue` (same id) for the saved version, so panning back to a
+   * cached area never shows prices, confirmations or attributes from before an edit.
+   */
+  replaceVenue(venue: Venue): void {
+    for (const entry of this.entries.values()) {
+      if (entry.venues.some((v) => v.id === venue.id)) {
+        entry.venues = entry.venues.map((v) => (v.id === venue.id ? venue : v));
+      }
+    }
   }
 
   set(bounds: Bounds, requestBounds: Bounds, entry: VenueCacheEntry): void {
@@ -153,6 +168,8 @@ export function apiVenueToVenue(v: VenueFromAPI): Venue {
   return {
     ...v,
     beerPrices: (v.beerPrices ?? []).map((p) => ({
+      ...(p.id ? { id: p.id } : {}),
+      ...(p.updatedAt ? { updatedAt: p.updatedAt } : {}),
       type: p.type as BeerType,
       label: p.label,
       priceBRL: p.priceBRL,
@@ -168,14 +185,6 @@ export function venueKeyByPlace(venue: Venue): string {
 
 export function isFromExternal(venue: Venue): boolean {
   return Boolean(venue.fromOsm || venue.fromGoogle);
-}
-
-function placeScore(venue: Venue): number {
-  return (
-    (venue.userAdded ? 100 : 0) +
-    (venue.beerPrices.length > 0 ? 10 : 0) +
-    Date.parse(venue.createdAt)
-  );
 }
 
 /**
@@ -207,7 +216,7 @@ export function mergeExternalVenues(
   for (const venue of [...rest, ...merged]) {
     const key = venueKeyByPlace(venue);
     const current = byPlace.get(key);
-    if (!current || placeScore(venue) >= placeScore(current)) {
+    if (!current || comparePlacePriority(venue, current) >= 0) {
       byPlace.set(key, venue);
     }
   }
@@ -234,6 +243,13 @@ export interface VenueFilterOptions {
   beerType: BeerType | "";
   neighborhood: string;
   happyHourOnly: boolean;
+  footballOnly?: boolean;
+  reservationsOnly?: boolean;
+  outdoorOnly?: boolean;
+  /** Only venues whose opening hours say they are open at `now` (unknown hours excluded). */
+  openNowOnly?: boolean;
+  /** Clock for "Aberto agora" (tests); defaults to the current time. */
+  now?: Date;
   sort: SortOption;
   userLocation: { lat: number; lng: number } | null;
   mapCenter: { lat: number; lng: number };
@@ -256,6 +272,14 @@ export function filterAndSortVenues(venues: Venue[], options: VenueFilterOptions
       (v) => v.neighborhood.toLowerCase() === neighborhood.toLowerCase()
     );
   }
+  // Attribute filters keep only venues where the fact is known to be true (unknown = excluded).
+  if (options.footballOnly) list = list.filter((v) => v.transmitsFootball === true);
+  if (options.reservationsOnly) list = list.filter((v) => v.acceptsReservations === true);
+  if (options.outdoorOnly) list = list.filter((v) => v.hasOutdoorArea === true);
+  if (options.openNowOnly) {
+    const now = options.now ?? new Date();
+    list = list.filter((v) => openStatus(v.openingHours, now)?.open === true);
+  }
   if (happyHourOnly) {
     list = list.filter((v) => v.hasHappyHour);
   }
@@ -266,6 +290,8 @@ export function filterAndSortVenues(venues: Venue[], options: VenueFilterOptions
     list.sort((a, b) => comparePrices(price.get(a)!, price.get(b)!, direction));
   } else if (sort === "name") {
     list.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  } else if (sort === "rating") {
+    list.sort((a, b) => ratingSortValue(b) - ratingSortValue(a) || getMinBeerPrice(a) - getMinBeerPrice(b));
   } else if (sort === "distance") {
     // Without a known user position, "nearest" means nearest to the map center.
     const origin = options.userLocation ?? options.mapCenter;

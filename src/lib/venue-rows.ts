@@ -3,7 +3,7 @@
  * Free of Next.js imports so it can be unit-tested with plain Node.
  */
 
-import type { Venue, BeerPrice, BeerType } from "@/types";
+import type { Venue, BeerPrice, BeerType, OpeningHours } from "@/types";
 
 export type VenueRow = {
   id: string;
@@ -26,6 +26,11 @@ export type VenueRow = {
   created_by?: string | null;
   last_edited_by?: string | null;
   last_edited_at?: string | null;
+  /** Added by 005_price_freshness_and_venue_tags.sql (null = unknown). */
+  transmits_football?: boolean | null;
+  accepts_reservations?: boolean | null;
+  has_outdoor_area?: boolean | null;
+  opening_hours?: OpeningHours | null;
 };
 
 export type BeerPriceRow = {
@@ -36,13 +41,20 @@ export type BeerPriceRow = {
   price_brl: number;
   volume_ml: number | null;
   created_at: string;
+  /** Added by 005_price_freshness_and_venue_tags.sql. */
+  updated_at?: string | null;
 };
 
+/** Rating aggregate for one venue (from public.venue_rating_summaries). */
+export type RatingSummary = { avg: number; count: number };
+
 /** Maps a row for the client. Author ids and moderation state are never exposed. */
-export function rowToVenue(row: VenueRow, prices: BeerPriceRow[]): Venue {
+export function rowToVenue(row: VenueRow, prices: BeerPriceRow[], rating?: RatingSummary): Venue {
   const beerPrices: BeerPrice[] = prices
     .filter((p) => p.venue_id === row.id)
     .map((p) => ({
+      id: p.id,
+      ...(p.updated_at ? { updatedAt: p.updated_at } : {}),
       type: p.type as BeerType,
       label: p.label,
       priceBRL: Number(p.price_brl),
@@ -66,5 +78,10 @@ export function rowToVenue(row: VenueRow, prices: BeerPriceRow[]): Venue {
     pricesUnverified: row.prices_unverified === true,
     fromOsm: row.source === "osm",
     fromGoogle: row.source === "google",
+    ...(row.transmits_football != null ? { transmitsFootball: row.transmits_football } : {}),
+    ...(row.accepts_reservations != null ? { acceptsReservations: row.accepts_reservations } : {}),
+    ...(row.has_outdoor_area != null ? { hasOutdoorArea: row.has_outdoor_area } : {}),
+    ...(row.opening_hours ? { openingHours: row.opening_hours } : {}),
+    ...(rating && rating.count > 0 ? { ratingAvg: rating.avg, ratingCount: rating.count } : {}),
   };
 }

@@ -2,12 +2,13 @@
 
 import { useCallback, useMemo, useState, useEffect } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { reportVenuePrices } from "@/lib/api";
 import type { Venue } from "@/types";
 import { FilterBar } from "@/components/FilterBar";
 import { VenueList } from "@/components/VenueList";
 import { AddVenueModal } from "@/components/AddVenueModal";
-import { AddPricesModal } from "@/components/AddPricesModal";
+import { AddPricesModal, type VenuePricesEdit } from "@/components/AddPricesModal";
 import { AddressSearch } from "@/components/AddressSearch";
 import { FilterChips } from "@/components/FilterChips";
 import { VenueSheet } from "@/components/VenueSheet";
@@ -16,6 +17,7 @@ import { REOPEN_ADD_VENUE_KEY } from "@/components/LoginCard";
 import { BEER_TYPE_LABELS } from "@/lib/venue-state";
 import { useVenuesMap } from "@/lib/use-venues-map";
 import { useVenueFilters } from "@/lib/use-venue-filters";
+import { useFavorites } from "@/lib/use-favorites";
 
 const Map = dynamic(() => import("@/components/Map").then((m) => m.Map), {
   ssr: false,
@@ -42,7 +44,9 @@ export default function Home() {
     handleLocateMe,
     handleAddVenue: saveVenue,
     handleUpdateVenuePrices: saveVenuePrices,
+    handleVenueSaved,
   } = useVenuesMap();
+  const favorites = useFavorites();
   const {
     maxPrice,
     setMaxPrice,
@@ -50,6 +54,8 @@ export default function Home() {
     setBeerType,
     neighborhood,
     setNeighborhood,
+    tagFilters,
+    setTagFilter,
     happyHourOnly,
     setHappyHourOnly,
     sort,
@@ -95,8 +101,8 @@ export default function Home() {
   );
 
   const handleUpdateVenuePrices = useCallback(
-    async (updatedVenue: Venue) => {
-      await saveVenuePrices(updatedVenue);
+    async (edit: VenuePricesEdit) => {
+      await saveVenuePrices(edit);
       setVenueToEditPrices(null);
     },
     [saveVenuePrices]
@@ -173,6 +179,8 @@ export default function Home() {
           }`}
         >
           <FilterBar
+            tagFilters={tagFilters}
+            onTagFilterChange={setTagFilter}
             maxPrice={maxPrice}
             onMaxPriceChange={setMaxPrice}
             beerType={beerType}
@@ -188,6 +196,7 @@ export default function Home() {
               { value: "price_asc", label: "Menor preço" },
               { value: "price_desc", label: "Maior preço" },
               { value: "distance", label: "Mais perto" },
+              { value: "rating", label: "Melhor avaliação" },
               { value: "name", label: "Nome" },
             ]}
           />
@@ -254,6 +263,16 @@ export default function Home() {
           priceTypeLabel={beerType ? BEER_TYPE_LABELS[beerType] : undefined}
           onAddPrices={(v) => setVenueToEditPrices(v)}
           onReportPrices={(v) => reportVenuePrices(v.id)}
+          onVenueSaved={handleVenueSaved}
+          favorite={
+            favorites.available
+              ? {
+                  isFavorite: favorites.ids.has(selectedVenue.id),
+                  signedIn: favorites.signedIn,
+                  onToggle: () => favorites.toggle(selectedVenue.id),
+                }
+              : undefined
+          }
         />
       )}
 
@@ -266,7 +285,7 @@ export default function Home() {
 
       {/* Bottom navigation (MisterGoodBeer style) */}
       <nav
-        className="flex-none flex items-center justify-center gap-16 sm:gap-24 border-t border-stone-800 bg-stone-900/95 pt-2 safe-area-pb z-[800]"
+        className="flex-none flex items-center justify-center gap-10 sm:gap-20 border-t border-stone-800 bg-stone-900/95 pt-2 safe-area-pb z-[800]"
         aria-label="Navegação principal"
       >
         <span className="flex flex-col items-center gap-0.5 text-amber-500 font-medium text-xs">
@@ -281,6 +300,13 @@ export default function Home() {
           <span aria-hidden>➕</span>
           Adicionar bar
         </button>
+        <Link
+          href="/conta"
+          className="flex flex-col items-center gap-0.5 text-stone-400 hover:text-amber-500 text-xs font-medium transition"
+        >
+          <span aria-hidden>👤</span>
+          Minha conta
+        </Link>
       </nav>
 
       <AddVenueModal
