@@ -429,3 +429,25 @@ test("upgrade from the previous migration backfills updated_at from created_at",
     await old.close();
   }
 });
+
+test("a real price correction clears needs_review; same prices, attributes or confirmation do not", { skip }, async () => {
+  const venue = await createVenue([CHOPE, LATA]);
+  const venueId = venue.venue.id;
+  const flag = () => asRole("service_role", null, () => rows("select public.flag_venue_for_review($1::uuid)", [venueId]));
+  const needsReview = async () =>
+    (await rows("select needs_review from public.venues where id = $1", [venueId]))[0].needs_review;
+
+  await flag();
+  await updateVenue(venueId, { p_replace_prices: true, p_prices: [LATA, CHOPE] });
+  assert.equal(await needsReview(), true, "re-saving the same prices is not a correction");
+  await updateVenue(venueId, { p_attributes: JSON.stringify({ transmits_football: true }) });
+  assert.equal(await needsReview(), true, "attribute edits do not answer a price report");
+  await confirmPrice(venueId, (await pricesOf(venueId))[0].id);
+  assert.equal(await needsReview(), true, "confirming does not clear a report");
+
+  await updateVenue(venueId, { p_replace_prices: true, p_prices: [{ ...CHOPE, price_brl: 13 }, LATA] });
+  assert.equal(await needsReview(), false, "changed price clears the report");
+  await flag();
+  await updateVenue(venueId, { p_replace_prices: true, p_prices: [LATA] });
+  assert.equal(await needsReview(), false, "removing a price is a correction too");
+});

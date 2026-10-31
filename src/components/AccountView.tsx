@@ -8,6 +8,7 @@ import { getAccessToken, getSupabaseBrowser } from "@/lib/supabase-browser";
 import { useAuthUser } from "@/lib/use-auth-user";
 import { apiVenueToVenue, getMinBeerPrice } from "@/lib/venue-state";
 import { LoginCard } from "@/components/LoginCard";
+import { formatBRL } from "@/lib/format";
 
 type FavoritesLoad = { status: "loading" } | { status: "error" } | { status: "ready"; venues: Venue[] };
 
@@ -102,7 +103,7 @@ export function AccountView() {
                     <p className="font-medium text-stone-100">{v.name}</p>
                     <p className="text-xs text-stone-500">{[v.neighborhood, v.city].filter(Boolean).join(", ")}</p>
                     <p className="text-sm text-amber-400">
-                      {Number.isFinite(min) ? `A partir de R$ ${min.toFixed(2)}` : "Preços não informados"}
+                      {Number.isFinite(min) ? `A partir de ${formatBRL(min)}` : "Preços não informados"}
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">

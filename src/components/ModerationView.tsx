@@ -7,6 +7,7 @@ import { freshnessLabel } from "@/lib/price-freshness";
 import { getAccessToken } from "@/lib/supabase-browser";
 import { useAuthUser } from "@/lib/use-auth-user";
 import { BEER_TYPE_LABELS } from "@/lib/venue-state";
+import { formatBRL } from "@/lib/format";
 
 type QueueLoad =
   | { status: "loading" }
@@ -103,7 +104,7 @@ export function ModerationView() {
             <ul className="mt-2 text-sm text-stone-300">
               {v.beerPrices.map((p, i) => (
                 <li key={p.id ?? i}>
-                  {p.label || BEER_TYPE_LABELS[p.type as keyof typeof BEER_TYPE_LABELS]}: R$ {p.priceBRL.toFixed(2)}
+                  {p.label || BEER_TYPE_LABELS[p.type as keyof typeof BEER_TYPE_LABELS]}: {formatBRL(p.priceBRL)}
                   <span className="text-xs text-stone-500"> · {freshnessLabel(p.updatedAt)}</span>
                 </li>
               ))}

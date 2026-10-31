@@ -115,7 +115,7 @@ export function VenueAttributesEditor({ value, onChange }: VenueAttributesEditor
               );
             })}
             <p className="text-xs text-stone-500">
-              Horário de Brasília. Fechamento antes da abertura (ex.: 18:00–02:00) vale para a madrugada seguinte.
+              Horário de Brasília; 18:00–02:00 fecha na madrugada seguinte.
             </p>
             {!hasAnyOpenDay(hours) && (
               <p className="text-xs text-red-300">Marque ao menos um dia aberto ou desmarque o horário.</p>

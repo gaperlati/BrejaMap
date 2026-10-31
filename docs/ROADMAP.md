@@ -71,18 +71,18 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 
 ### Achados do teste com usuário (29/10/2026)
 
-Prioridade em ordem. Só os itens marcados foram resolvidos; as correções de filtro (P0) e da busca de cidade na lista estão em andamento em PRs separados.
+Prioridade em ordem. Só os itens marcados foram resolvidos.
 
-- [ ] **P0 — Filtro de tipo + preço máximo na mesma cerveja**: o preço máximo precisa valer para a cerveja do tipo escolhido, e o menor preço exibido, a ordenação, os pinos e os cards devem usar essa mesma cerveja. Hoje “Garrafa ≤ R$ 10” inclui bares com garrafa a R$ 14,50/15,00 porque o chope custa R$ 7,90/8,20.
-- [ ] **P1 — Busca de cidade na aba Lista**: ao escolher São Paulo, a lista continua mostrando São Carlos até voltar para a aba Mapa.
-- [ ] **P1 — Recuperar de filtros**: botão “Limpar filtros” e chips dos filtros ativos (ou contagem); hoje só existe um pontinho no chip “Filtros”.
-- [ ] **P1 — Mobile: primeiros resultados empurrados para baixo** pelo painel de filtros sempre aberto na aba Lista.
+- [x] **P0 — Filtro de tipo + preço máximo na mesma cerveja** (PR #20): o preço máximo precisa valer para a cerveja do tipo escolhido, e o menor preço exibido, a ordenação, os pinos e os cards devem usar essa mesma cerveja. Hoje “Garrafa ≤ R$ 10” inclui bares com garrafa a R$ 14,50/15,00 porque o chope custa R$ 7,90/8,20.
+- [x] **P1 — Busca de cidade na aba Lista** (PR #21): ao escolher São Paulo, a lista continua mostrando São Carlos até voltar para a aba Mapa.
+- [x] **P1 — Recuperar de filtros**: o chip “Filtros” mostra a quantidade de filtros ativos e o painel tem “Limpar filtros (N)”, que volta tudo ao padrão.
+- [x] **P1 — Mobile: primeiros resultados empurrados para baixo**: na aba Lista do celular o painel de filtros fica recolhido até tocar em “Filtros” (no desktop continua visível).
 - [x] **P1 — Mobile: chips do topo cortando “Buscar bares”** em 375 px (quebra de linha, só CSS).
-- [ ] **P1 — Clareza do preço exibido**: deixar claro qual tipo/tamanho de cerveja corresponde ao preço mostrado e há quanto tempo foi informado (frescor de preços continua sendo a próxima feature depois das correções).
-- [ ] **P1 — Formatação de moeda consistente em pt-BR** (`R$ 7,90` em pinos, cards, sheet e filtros); adiado para não conflitar com os PRs de filtro/lista em andamento.
-- [ ] **P1 — Ações do mapa mais diretas**: distinguir pesquisa de endereço, localização atual e busca de bares na área com rótulos curtos, sem novos parágrafos explicativos.
+- [x] **P1 — Clareza do preço exibido** (tipo filtrado no destaque do detalhe, PR #20; data de cada preço, “Atualizado há X dias”, nesta versão): deixar claro qual tipo/tamanho de cerveja corresponde ao preço mostrado e há quanto tempo foi informado (frescor de preços continua sendo a próxima feature depois das correções).
+- [x] **P1 — Formatação de moeda consistente em pt-BR**: `formatBRL` (`R$ 7,90`, sempre dois decimais) em pinos, cards, detalhe, conta e moderação; a fonte do pino diminui para preços longos.
+- [ ] **P1 — Ações do mapa mais diretas** (pendente: escolher e validar os rótulos com usuários): distinguir pesquisa de endereço, localização atual e busca de bares na área com rótulos curtos, sem novos parágrafos explicativos.
 - [x] **P1 — Formulários sem instruções redundantes**: removidos os parágrafos explicativos dos formulários de preço; manter rótulos curtos.
-- [ ] **P2 — Texto do local no “Adicionar bar”**: “Centro do mapa (ainda não ajustado)” vs. “Local confirmado” ainda confunde; simplificar o texto de estado do pino.
+- [ ] **P2 — Texto do local no “Adicionar bar”** (pendente: validar o novo texto com usuários): “Centro do mapa (ainda não ajustado)” vs. “Local confirmado” ainda confunde; simplificar o texto de estado do pino.
 
 ---
 
@@ -109,7 +109,7 @@ Backlog de features priorizadas com base em [MGB_FEATURES_AND_BRAZIL.md](../MGB_
 
 ### Implementado nesta rodada (código pronto; depende da migração `005` em produção)
 
-- [x] **Frescor de preços**: `beer_prices.updated_at` por preço (editar mantém a data dos preços que não mudaram), “Atualizado há X dias” no detalhe e no card, “Ainda é esse preço? Sim” (`POST /api/venues/[id]/confirm`, rate limit por IP e por IP+bar, id antigo → 404) e “Não, corrigir” (abre o editor). A data é a de entrada/confirmação no BrejaMap, não a de observação no bar. Ver [features.md](./features.md) seção 11
+- [x] **Frescor de preços**: `beer_prices.updated_at` por preço (editar mantém a data dos preços que não mudaram), “Atualizado há X dias” no detalhe e no card, “Ainda é esse preço? Sim” (`POST /api/venues/[id]/confirm`, rate limit por IP e por IP+bar, id antigo → 404) e “Não, corrigir” (abre o editor). A data é a de entrada/confirmação no BrejaMap, não a de observação no bar. Renovação da moderação: uma edição que muda de fato os preços limpa `needs_review` (a correção responde ao “Sinalizar preços incorretos”; um novo relato liga de novo); salvar os mesmos preços, editar só atributos ou confirmar não limpa. Ver [features.md](./features.md) seção 11
 - [x] **Foto do cardápio → preços**: `POST /api/menu-photo` (login, JPEG/PNG/WebP até 4 MB conferidos pela assinatura, rate limit por usuário/IP + teto diário do site) → Vercel AI Gateway (`google/gemini-2.5-flash-lite`, saída JSON estrita) → preços acrescentados ao formulário para revisão em Adicionar bar e Editar preços; a foto não é guardada. Pendente (dono): `AI_GATEWAY_API_KEY` no Vercel. Seção 15
 - [x] **Transmite futebol**, **Aceita reserva** e **Área externa / terraço**: colunas opcionais (Sim/Não/não informado), editor, tags e filtros. Seção 12
 - [x] **Aberto agora**: horário semanal por dia (fuso de São Paulo, virada da meia-noite), bloco no detalhe, tag e filtro. Seção 12

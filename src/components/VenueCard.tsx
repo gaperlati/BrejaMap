@@ -2,6 +2,7 @@
 
 import type { BeerPrice, BeerType, Venue } from "@/types";
 import { venueFreshnessLabel } from "@/lib/price-freshness";
+import { formatBRL } from "@/lib/format";
 import { MIN_RATINGS_TO_SHOW, ratingLabel } from "@/lib/venue-ratings";
 
 interface VenueCardProps {
@@ -46,14 +47,14 @@ export function VenueCard({
               className="text-xs px-2 py-0.5 rounded bg-stone-800 text-stone-400"
             >
               {p.label?.trim()
-                ? `${p.label} R$ ${p.priceBRL.toFixed(2)}`
-                : `${beerTypeLabels[p.type]} R$ ${p.priceBRL.toFixed(2)}`}
+                ? `${p.label} ${formatBRL(p.priceBRL)}`
+                : `${beerTypeLabels[p.type]} ${formatBRL(p.priceBRL)}`}
             </span>
           ))
         )}
       </div>
       <p className="text-amber-400 font-medium text-sm mt-1">
-        {Number.isFinite(minPrice) ? `A partir de R$ ${minPrice.toFixed(2)}` : "—"}
+        {Number.isFinite(minPrice) ? `A partir de ${formatBRL(minPrice)}` : "—"}
       </p>
       {venueFreshnessLabel(venue.beerPrices) && (
         <p className="text-xs text-stone-500">{venueFreshnessLabel(venue.beerPrices)}</p>

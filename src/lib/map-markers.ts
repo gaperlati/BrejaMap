@@ -1,3 +1,4 @@
+
 /**
  * Price-aware map marker decluttering: decides which venues are drawn as individual
  * markers and which ones are grouped into clusters at the current zoom level.
@@ -5,6 +6,7 @@
  * Kept free of React/DOM/Google Maps imports so it can be tested with `tsx --test`.
  */
 
+import { formatBRL } from "./format";
 import type { Venue } from "../types";
 
 /** World size in pixels at zoom 0 (Google Maps / Web Mercator tile size). */
@@ -223,7 +225,17 @@ export function clusterMapVenues(venues: Venue[], options: ClusterOptions): MapM
   return placed.map((p) => toItem(p, zoom));
 }
 
-/** "R$ 8,0" style label used by price bubbles. */
+/** "R$ 8,00" label used by price bubbles (same format as the rest of the app). */
 export function formatPriceLabel(minPrice: number): string {
-  return `R$ ${minPrice.toFixed(1).replace(".", ",")}`;
+  return formatBRL(minPrice);
+}
+
+/**
+ * Font size (px) that keeps a price label inside its bubble: `compact` is the narrower text area
+ * of the cluster bubble, which also holds the "+N" badge.
+ */
+export function priceLabelFontSize(label: string, compact = false): number {
+  if (label.length <= 7) return compact ? 11 : 12;
+  if (label.length === 8) return compact ? 9 : 10;
+  return compact ? 8 : 9;
 }

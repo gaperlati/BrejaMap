@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { WEEKDAYS, WEEKDAY_LABELS, formatDayHours, openStatusLabel } from "@/lib/opening-hours";
 import { freshnessLabel, isPriceStale } from "@/lib/price-freshness";
+import { formatBRL } from "@/lib/format";
 import { getAccessToken } from "@/lib/supabase-browser";
 import { useAuthUser } from "@/lib/use-auth-user";
 import { apiVenueToVenue } from "@/lib/venue-state";
@@ -116,7 +117,7 @@ function PriceLine({
           {label}
           {price.volumeMl ? <span className="text-stone-500"> · {price.volumeMl} ml</span> : null}
         </span>
-        <span className="font-semibold text-amber-400">R$ {price.priceBRL.toFixed(2)}</span>
+        <span className="font-semibold text-amber-400">{formatBRL(price.priceBRL)}</span>
       </div>
       <p className={`text-xs ${stale ? "text-amber-300" : "text-stone-500"}`}>
         {status === "done" ? "Confirmado agora. Obrigado!" : freshnessLabel(price.updatedAt)}
@@ -404,7 +405,7 @@ export function VenueSheet({
 
           <p className="text-amber-400 font-semibold mt-3">
             {hasPrices
-              ? `${priceTypeLabel ? `${priceTypeLabel} — a` : "A"} partir de R$ ${minPrice.toFixed(2)}`
+              ? `${priceTypeLabel ? `${priceTypeLabel} — a` : "A"} partir de ${formatBRL(minPrice)}`
               : "—"}
           </p>
           {venue.hasHappyHour && venue.happyHourDetails && (

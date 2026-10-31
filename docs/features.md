@@ -75,13 +75,15 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 
 ## 3. Filtros
 
-- **Chips** (header): Happy hour, Filtros (com indicador quando há filtros ativos), Buscar bares — sem rótulo textual extra ao lado do happy hour. Em telas estreitas (ex.: 375 px) os chips quebram linha em vez de ficarem cortados por rolagem horizontal.
+- **Chips** (header): Happy hour, Filtros (com a quantidade de filtros ativos, contando a ordenação diferente de “Menor preço”), Buscar bares — sem rótulo textual extra ao lado do happy hour. Em telas estreitas (ex.: 375 px) os chips quebram linha em vez de ficarem cortados por rolagem horizontal.
 - **Painel de filtros**: aberto pelo chip “Filtros” no header ou pela sidebar (desktop). O chip “Filtros” fica destacado quando há filtros ativos (indicador visual).
 - **Controles dos filtros**: preço máximo sem as setas nativas de incremento, mantendo campo numérico e teclado decimal no celular. Tipo, bairro e ordenação usam menus escuros com seleção âmbar, indicador de seleção, rolagem temática e abertura acima/abaixo conforme o espaço disponível. A navegação aceita setas, Home/End, Enter/Espaço, Escape, Tab e busca pelo início do nome (sem diferenciar acentos); clicar fora fecha o menu.
 - **Chip “Buscar bares”**: carrega bares da **nossa API** (backend Supabase) na área visível (zoom ≥ 12). Carregamento automático ao pan/zoom (debounce ~150 ms). Se o backend não estiver configurado, mostra mensagem e o mapa fica vazio.
 - **Preço máximo (R$)**: filtra bares cujo menor preço seja ≤ valor (bares sem preços ficam de fora).
 - **Tipo de cerveja**: filtra bares que tenham ao menos um preço daquele tipo (bares sem preços ficam de fora).
 - **Bairro**: lista os bairros dos bares visíveis (ignora vazios, ordem pt-BR).
+- **Limpar filtros (N)**: aparece no topo do painel quando há filtros ativos e volta tudo ao padrão (`clearFilters` em `src/lib/use-venue-filters.ts`, contagem em `countActiveFilters`).
+- **Aba Lista no celular**: o painel de filtros fica recolhido até tocar no chip “Filtros”, para os resultados aparecerem primeiro; no desktop o painel continua sempre visível.
 - **Apenas happy hour**.
 - **Só bares que informaram** (seção 12): **Aberto agora** (pelo horário de funcionamento, no fuso de São Paulo, reavaliado a cada minuto enquanto o filtro está ligado), **Transmite futebol**, **Aceita reserva** e **Área externa**. Bares sem a informação (desconhecido) ficam de fora quando o filtro está ligado.
 - **Ordenar**: Menor preço, Maior preço, **Mais perto**, **Melhor avaliação** (média; bares com menos de 3 avaliações vão para o fim) e Nome. "Mais perto" usa a última localização conhecida do usuário (geolocalização do navegador); sem ela, a distância é medida a partir do centro do mapa (`distanceKm` em `src/lib/geo.ts`).
@@ -241,6 +243,12 @@ Ao selecionar um bar no mapa ou na lista:
 
 ---
 
+## 8.1. Formato de preço
+
+- Todos os preços usam `formatBRL` (`src/lib/format.ts`): `R$ 7,90`, sempre com dois decimais e vírgula, em pinos e grupos do mapa, cards, detalhe, Minha conta e moderação. Nos pinos a fonte diminui para rótulos longos (`priceLabelFontSize` em `src/lib/map-markers.ts`).
+
+---
+
 ## 9. Erros e compartilhamento
 
 - **Error boundary** (`src/app/error.tsx`): se algo quebrar ao renderizar, aparece "Algo deu errado" com botão **Tentar de novo** em vez de tela em branco. Falhas do Google Maps continuam tratadas dentro de `Map.tsx` (mensagem + timeout de 12 s).
@@ -268,6 +276,7 @@ Ao selecionar um bar no mapa ou na lista:
 - **Rótulos** (`src/lib/price-freshness.ts`): “Atualizado hoje”, “Atualizado há 1 dia”, “Atualizado há N dias” e, a partir de 60 dias, “Atualizado há N meses”. Preços com 30 dias ou mais ficam em âmbar. No card da lista aparece a atualização mais recente do bar; no detalhe, cada preço tem a sua.
 - **Editar preserva datas**: ao salvar o editor, cada preço igual a um já gravado (tipo, marca, valor e ml) mantém id e data; só os novos ou alterados recebem a data de agora (`replace_venue_prices` na 005).
 - **“Ainda é esse preço? Sim”**: `POST /api/venues/[id]/confirm { priceId }` (sem login) chama `confirm_beer_price`, que atualiza só aquele preço e devolve o bar; o detalhe, a lista e o cache de áreas (`VenueBboxCache.replaceVenue`) passam a mostrar a nova data. Se o preço foi editado nesse meio-tempo, o id antigo não existe mais e a resposta é **404** (“Este preço mudou. Feche e abra o bar para ver a versão atual.”): uma página desatualizada nunca confirma um preço que não mostrou. Rate limit: 20/10 min por IP e 5/dia por (IP, bar), além do interruptor `USER_EDITS_ENABLED`. Confirmar não altera “Preços não verificados” nem registra quem confirmou.
+- **Moderação renovada**: uma edição que muda de fato os preços (algum preço novo, alterado ou removido) limpa `needs_review`, porque a correção responde ao “Sinalizar preços incorretos”; um novo relato liga de novo. Salvar os mesmos preços, editar só atributos/happy hour ou confirmar um preço não limpa.
 - **“Não, corrigir”**: abre o editor de preços do bar (a correção segue o fluxo normal de edição; para denunciar sem corrigir continua existindo “Sinalizar preços incorretos”).
 
 **Arquivos**: `src/lib/price-freshness.ts`, `src/lib/handlers/confirm-price.ts`, `src/app/api/venues/[id]/confirm/route.ts`, `src/components/VenueSheet.tsx`, `src/lib/use-venues-map.ts` (`handleVenueSaved`), `src/lib/venue-state.ts`.

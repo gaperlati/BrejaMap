@@ -17,7 +17,15 @@ import { emptyPriceRow, mergeImportedPrices, priceRowsToPrices, toPriceRows } fr
 import { daysSince, freshnessLabel, isPriceStale, venueFreshnessLabel } from "./price-freshness";
 import { fetchRatingSummaries, ratingLabel, ratingSortValue, withRating } from "./venue-ratings";
 import { collapseOsmNearDuplicates, comparePlacePriority, dedupeVenuesByPlace } from "./venue-selection";
-import { apiVenueToVenue, filterAndSortVenues, mergeExternalVenues, VenueBboxCache } from "./venue-state";
+import {
+  apiVenueToVenue,
+  countActiveFilters,
+  filterAndSortVenues,
+  mergeExternalVenues,
+  VenueBboxCache,
+} from "./venue-state";
+import { formatBRL } from "./format";
+import { priceLabelFontSize } from "./map-markers";
 import { buildCreateVenueArgs, buildUpdateVenueArgs } from "./venue-writes";
 import { sanitizeBeerPrices } from "./price-validation";
 import {
@@ -412,4 +420,42 @@ test("confirm and menu-photo rate limits use their own buckets and keys", () => 
   assert.equal(menuPhotoDailyLimit({}), 200);
   assert.equal(menuPhotoDailyLimit({ MENU_PHOTO_DAILY_LIMIT: "30" }), 30);
   assert.equal(menuPhotoDailyLimit({ MENU_PHOTO_DAILY_LIMIT: "-1" }), 200);
+});
+
+// --- Formatting and filter state -----------------------------------------------------------------
+
+test("formatBRL always shows two decimals with a comma", () => {
+  assert.equal(formatBRL(7.9), "R$ 7,90");
+  assert.equal(formatBRL(12), "R$ 12,00");
+  assert.equal(formatBRL(499.99), "R$ 499,99");
+});
+
+test("priceLabelFontSize shrinks long labels, more inside cluster bubbles", () => {
+  assert.equal(priceLabelFontSize("R$ 7,90"), 12);
+  assert.equal(priceLabelFontSize("R$ 12,50"), 10);
+  assert.equal(priceLabelFontSize("R$ 125,00"), 9);
+  assert.equal(priceLabelFontSize("R$ 7,90", true), 11);
+  assert.equal(priceLabelFontSize("R$ 12,50", true), 9);
+});
+
+test("countActiveFilters counts every non-default filter, including sort and tags", () => {
+  const defaults = {
+    maxPrice: null,
+    beerType: "" as const,
+    neighborhood: "",
+    happyHourOnly: false,
+    sort: "price_asc" as const,
+    tagFilters: { footballOnly: false, openNowOnly: false },
+  };
+  assert.equal(countActiveFilters(defaults), 0);
+  assert.equal(
+    countActiveFilters({
+      ...defaults,
+      maxPrice: 0,
+      beerType: "lata",
+      sort: "rating",
+      tagFilters: { footballOnly: true, openNowOnly: true },
+    }),
+    5
+  );
 });

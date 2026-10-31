@@ -255,6 +255,28 @@ export interface VenueFilterOptions {
   mapCenter: { lat: number; lng: number };
 }
 
+/** Filter fields that count as "active" for the Filtros chip and "Limpar filtros". */
+export interface ActiveFilterState {
+  maxPrice: PriceFilter;
+  beerType: BeerType | "";
+  neighborhood: string;
+  happyHourOnly: boolean;
+  sort: SortOption;
+  tagFilters: Record<string, boolean>;
+}
+
+/** How many filters differ from the defaults (sort counts when it isn't "Menor preço"). */
+export function countActiveFilters(state: ActiveFilterState): number {
+  return (
+    Number(state.maxPrice != null) +
+    Number(state.beerType !== "") +
+    Number(state.neighborhood !== "") +
+    Number(state.happyHourOnly) +
+    Number(state.sort !== "price_asc") +
+    Object.values(state.tagFilters).filter(Boolean).length
+  );
+}
+
 /**
  * Venues visible on the map that pass the filters, in the requested order. Type and budget
  * must be met by the same beer; price sorting uses the cheapest matching beer.

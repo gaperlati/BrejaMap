@@ -13,6 +13,8 @@ const TAG_FILTERS: { key: keyof TagFilters; label: string }[] = [
 ];
 
 interface FilterBarProps {
+  activeFilterCount: number;
+  onClearFilters: () => void;
   tagFilters: TagFilters;
   onTagFilterChange: (key: keyof TagFilters, value: boolean) => void;
   maxPrice: PriceFilter;
@@ -30,6 +32,8 @@ interface FilterBarProps {
 }
 
 export function FilterBar({
+  activeFilterCount,
+  onClearFilters,
   tagFilters,
   onTagFilterChange,
   maxPrice,
@@ -48,6 +52,15 @@ export function FilterBar({
   const priceId = useId();
   return (
     <div className="p-3 border-b border-stone-800 space-y-3 bg-stone-900/50">
+      {activeFilterCount > 0 && (
+        <button
+          type="button"
+          onClick={onClearFilters}
+          className="text-sm text-amber-400 underline underline-offset-2 hover:text-amber-300"
+        >
+          Limpar filtros ({activeFilterCount})
+        </button>
+      )}
       <div>
         <label htmlFor={priceId} className="block text-xs font-medium text-stone-500 mb-1">
           Preço máximo (R$)

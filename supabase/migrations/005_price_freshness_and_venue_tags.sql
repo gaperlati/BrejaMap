@@ -13,7 +13,9 @@
 -- 3. update_venue_and_prices / create_venue_with_prices take p_attributes (jsonb): only the keys
 --    present are written, a JSON null clears the value. Replacing prices keeps the row (id and
 --    updated_at) of every price that did not change, so editing one price does not refresh the
---    freshness of the others.
+--    freshness of the others. An edit that really changes the prices clears needs_review (the
+--    correction answers "Sinalizar preços incorretos"; a later report sets it again). Confirming
+--    a price does not clear it.
 -- 4. confirm_beer_price(): "Ainda é esse preço? Sim" bumps one price's updated_at.
 -- 5. favorites and ratings tables (RLS on, no policies: only the API's service role reaches them)
 --    and venue_rating_summaries() for the map.
@@ -95,9 +97,11 @@ comment on function public.apply_venue_attributes(uuid, jsonb) is
 
 -- Replaces a venue's prices with p_prices, keeping the existing row (id, created_at, updated_at)
 -- of each incoming price identical to a stored one; other stored rows are deleted and new
--- prices are inserted with updated_at = now().
+-- prices are inserted with updated_at = now(). Returns true when any price was added or removed.
+-- (Dropped first so the return type can change if an older draft returned void.)
+drop function if exists public.replace_venue_prices(uuid, jsonb);
 create or replace function public.replace_venue_prices(p_venue_id uuid, p_prices jsonb)
-returns void
+returns boolean
 language plpgsql
 set search_path = ''
 as $$
@@ -105,6 +109,7 @@ declare
   v_price record;
   v_match uuid;
   v_keep uuid[] := '{}';
+  v_changed boolean := false;
 begin
   if jsonb_typeof(p_prices) is distinct from 'array' or jsonb_array_length(p_prices) = 0 then
     raise exception 'p_prices must be a non-empty json array' using errcode = '22023';
@@ -129,11 +134,13 @@ begin
       insert into public.beer_prices (venue_id, type, label, price_brl, volume_ml, updated_at)
       values (p_venue_id, v_price.type, v_price.label, v_price.price_brl, v_price.volume_ml, now())
       returning id into v_match;
+      v_changed := true;
     end if;
     v_keep := v_keep || v_match;
   end loop;
 
   delete from public.beer_prices where venue_id = p_venue_id and not (id = any(v_keep));
+  return v_changed or found;
 end;
 $$;
 
@@ -183,6 +190,7 @@ set search_path = ''
 as $$
 declare
   v_attributes_changed boolean;
+  v_prices_changed boolean := false;
 begin
   -- Lock the row so concurrent edits of the same venue are serialized.
   perform 1 from public.venues where id = p_venue_id for update;
@@ -202,7 +210,7 @@ begin
   end if;
 
   if p_replace_prices then
-    perform public.replace_venue_prices(p_venue_id, p_prices);
+    v_prices_changed := public.replace_venue_prices(p_venue_id, p_prices);
   end if;
 
   v_attributes_changed := public.apply_venue_attributes(p_venue_id, p_attributes);
@@ -211,6 +219,8 @@ begin
     update public.venues
     set
       prices_unverified = true,
+      -- A real correction answers "Sinalizar preços incorretos"; a later report sets it again.
+      needs_review = case when v_prices_changed then false else needs_review end,
       last_edited_by = p_edited_by,
       last_edited_at = now()
     where id = p_venue_id;
@@ -221,7 +231,7 @@ end;
 $$;
 
 comment on function public.update_venue_and_prices(uuid, boolean, boolean, text, boolean, jsonb, uuid, jsonb) is
-  'Atomically updates happy hour, venue attributes and/or replaces the beer prices of a venue (unchanged prices keep updated_at), marking it as community-edited. Returns {venue, beer_prices}, or null when the venue does not exist. Used by PATCH /api/venues/[id].';
+  'Atomically updates happy hour, venue attributes and/or replaces the beer prices of a venue (unchanged prices keep updated_at), marking it as community-edited; a real price change clears needs_review. Returns {venue, beer_prices}, or null when the venue does not exist. Used by PATCH /api/venues/[id].';
 
 -- Same contract as in 004, plus p_attributes.
 create or replace function public.create_venue_with_prices(

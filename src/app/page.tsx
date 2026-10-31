@@ -65,6 +65,8 @@ export default function Home() {
     venuesInBounds,
     neighborhoods,
     hasActiveFilters,
+    activeFilterCount,
+    clearFilters,
     filteredAndSortedVenues,
     getMatchingPrices,
     getMinPrice: getMatchingMinPrice,
@@ -133,6 +135,7 @@ export default function Home() {
             filtersOpen={filtersOpen}
             onFiltersOpenChange={setFiltersOpen}
             hasActiveFilters={hasActiveFilters}
+            activeFilterCount={activeFilterCount}
             onLoadOsmBars={handleLoadPlacesBars}
             osmLoadState={osmLoadState}
             osmError={osmError}
@@ -178,28 +181,33 @@ export default function Home() {
                 : "flex-none w-0 overflow-hidden sm:w-96 sm:overflow-y-auto sm:overscroll-y-contain sm:min-h-0"
           }`}
         >
-          <FilterBar
-            tagFilters={tagFilters}
-            onTagFilterChange={setTagFilter}
-            maxPrice={maxPrice}
-            onMaxPriceChange={setMaxPrice}
-            beerType={beerType}
-            onBeerTypeChange={setBeerType}
-            neighborhood={neighborhood}
-            onNeighborhoodChange={setNeighborhood}
-            neighborhoods={neighborhoods}
-            happyHourOnly={happyHourOnly}
-            onHappyHourOnlyChange={setHappyHourOnly}
-            sort={sort}
-            onSortChange={setSort}
-            sortOptions={[
-              { value: "price_asc", label: "Menor preço" },
-              { value: "price_desc", label: "Maior preço" },
-              { value: "distance", label: "Mais perto" },
-              { value: "rating", label: "Melhor avaliação" },
-              { value: "name", label: "Nome" },
-            ]}
-          />
+          {/* Mobile list tab: filters stay folded behind the "Filtros" chip so results come first. */}
+          <div className={viewMode === "list" && !filtersOpen ? "hidden sm:block" : undefined}>
+            <FilterBar
+              activeFilterCount={activeFilterCount}
+              onClearFilters={clearFilters}
+              tagFilters={tagFilters}
+              onTagFilterChange={setTagFilter}
+              maxPrice={maxPrice}
+              onMaxPriceChange={setMaxPrice}
+              beerType={beerType}
+              onBeerTypeChange={setBeerType}
+              neighborhood={neighborhood}
+              onNeighborhoodChange={setNeighborhood}
+              neighborhoods={neighborhoods}
+              happyHourOnly={happyHourOnly}
+              onHappyHourOnlyChange={setHappyHourOnly}
+              sort={sort}
+              onSortChange={setSort}
+              sortOptions={[
+                { value: "price_asc", label: "Menor preço" },
+                { value: "price_desc", label: "Maior preço" },
+                { value: "distance", label: "Mais perto" },
+                { value: "rating", label: "Melhor avaliação" },
+                { value: "name", label: "Nome" },
+              ]}
+            />
+          </div>
           <VenueList
             venues={filteredAndSortedVenues}
             totalVenuesCount={venuesInBounds.length}
