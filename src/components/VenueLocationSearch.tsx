@@ -186,7 +186,7 @@ export function VenueLocationSearch({ near, onSelect }: VenueLocationSearchProps
             </p>
           )}
           {listVisible && (
-            <ul id={listId} role="listbox" aria-label="Endereços encontrados" className="max-h-60 overflow-y-auto">
+            <ul id={listId} role="listbox" aria-label="Endereços encontrados" className="app-scrollbar max-h-60 overflow-y-auto">
               {results.map((r, index) => {
                 const formatted = formatNominatimResult(r);
                 const km = distanceKm(near, { lat: parseFloat(r.lat), lng: parseFloat(r.lon) });

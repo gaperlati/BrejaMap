@@ -212,12 +212,12 @@ function AddVenueDialog({
         {auth.loading ? (
           <p className="p-4 text-sm text-stone-400">Carregando...</p>
         ) : needsLogin ? (
-          <div className="overflow-y-auto p-4">
+          <div className="app-scrollbar overflow-y-auto p-4">
             <LoginCard />
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4">
+            <div className="app-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4">
               {auth.user && (
                 <div className="flex items-center justify-between gap-2 rounded-lg border border-stone-700 bg-stone-900/60 px-3 py-2 text-xs text-stone-400">
                   <span className="min-w-0 truncate">
