@@ -336,6 +336,23 @@ test("attribute-free, price-free update does not mark the venue as edited", { sk
   assert.equal(r.venue.last_edited_at, null);
 });
 
+test("resubmitting identical prices and happy hour does not mark the venue as edited", { skip }, async () => {
+  const venue = await createVenue([CHOPE, LATA]);
+  const id = venue.venue.id;
+  await rows("update public.venues set prices_unverified = false, last_edited_at = null where id = $1", [id]);
+  const same = await updateVenue(id, {
+    p_update_happy_hour: true,
+    p_has_happy_hour: false,
+    p_replace_prices: true,
+    p_prices: [LATA, CHOPE],
+  });
+  assert.equal(same.venue.prices_unverified, false);
+  assert.equal(same.venue.last_edited_at, null);
+  const changed = await updateVenue(id, { p_update_happy_hour: true, p_has_happy_hour: true, p_happy_hour_details: "18h" });
+  assert.equal(changed.venue.prices_unverified, true);
+  assert.notEqual(changed.venue.last_edited_at, null);
+});
+
 test("unchanged prices keep their id; duplicates are matched one-to-one", { skip }, async () => {
   const venue = await createVenue([CHOPE, LATA]);
   const venueId = venue.venue.id;

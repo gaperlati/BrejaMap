@@ -17,7 +17,7 @@ Produção: https://brejamap.vercel.app (Vercel, projeto ligado ao GitHub; todo 
 
 ### Pendências do rollout desta versão (migração 005)
 
-- [ ] Rodar `supabase/migrations/005_price_freshness_and_venue_tags.sql` em produção **antes** do merge do PR que a introduz. Sem ela: o mapa carrega (sem datas nem avaliações), mas criar/editar bar, confirmar preço, favoritos e avaliações respondem 500.
+- [x] Rodar `supabase/migrations/005_price_freshness_and_venue_tags.sql` em produção **antes** do merge do PR que a introduz (feito em 06/11/2026). Sem ela: o mapa carrega (sem datas nem avaliações), mas criar/editar bar, confirmar preço, favoritos e avaliações respondem 500.
 - [ ] Supabase → Authentication → URL Configuration → **Redirect URLs**: incluir `https://brejamap.vercel.app/**` (o login pelo Google com redirecionamento e o link do e-mail agora podem voltar para `/conta`; sem isso o Supabase volta para a página inicial, e o login funciona do mesmo jeito).
 - [ ] Opcional: `AI_GATEWAY_API_KEY` (Vercel → AI Gateway → API Keys) para ligar “Ler cardápio por foto”.
 - [ ] Opcional: `ADMIN_EMAILS` com o(s) e-mail(s) de moderação para usar `/admin`.

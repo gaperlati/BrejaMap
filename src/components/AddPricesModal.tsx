@@ -63,6 +63,13 @@ export function AddPricesModal({
       (hasHappyHour && happyHourDetails.trim() !== (venue.happyHourDetails ?? "")));
   const pricesOk = beerPrices.length > 0 || (!hadPrices && otherChanges);
   const canSave = pricesOk && hoursValid && !saving;
+  const disabledReason = !pricesOk
+    ? hadPrices
+      ? "Mantenha ao menos um preço."
+      : "Informe um preço ou altere os dados do bar."
+    : !hoursValid
+      ? "Corrija o horário de funcionamento."
+      : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,6 +163,10 @@ export function AddPricesModal({
             <p role="alert" className="text-sm text-red-300 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">
               {saveError}
             </p>
+          )}
+
+          {disabledReason && !saving && (
+            <p className="text-xs text-stone-400">{disabledReason}</p>
           )}
 
           <div className="flex gap-2 pt-2">

@@ -459,7 +459,7 @@ export function VenueSheet({
             </details>
           )}
 
-          <RatingSection key={venue.id} venue={venue} onSaved={onVenueSaved} />
+          <RatingSection key={`rating-${venue.id}`} venue={venue} onSaved={onVenueSaved} />
 
           <div
             className="mt-5 -mx-1 flex flex-nowrap gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] sm:mx-0 sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden"
@@ -492,7 +492,7 @@ export function VenueSheet({
           </div>
 
           {onReportPrices && venue.beerPrices.length > 0 && (
-            <ReportPricesButton key={venue.id} venue={venue} onReport={onReportPrices} />
+            <ReportPricesButton key={`report-${venue.id}`} venue={venue} onReport={onReportPrices} />
           )}
         </div>
       </div>

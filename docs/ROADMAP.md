@@ -16,7 +16,7 @@ O app já possui as funcionalidades essenciais para funcionar:
 - **Backend Supabase**: persistência de venues e beer_prices, API REST
 - **Empty state amigável**: mensagem e CTA quando não há bares na região
 - **Seed e deploy**: documentação para popular dados iniciais e processo de deploy em [deploy.md](./deploy.md)
-- **Frescor de preços, atributos do bar, horário, favoritos, avaliações, foto do cardápio e moderação**: código pronto (ver seção “Pós-release” abaixo); dependem da migração `005` em produção
+- **Frescor de preços, atributos do bar, horário, favoritos, avaliações, foto do cardápio e moderação**: código pronto (ver seção “Pós-release” abaixo); migração `005` aplicada em produção em 06/11/2026
 
 **Referência completa**: [features.md](./features.md)
 
@@ -29,7 +29,8 @@ Checkpoint: app está deployável, estável e apresentável. Foco em qualidade, 
 ### Deploy e dados
 
 - [x] Documentar processo de deploy: ordem migração → merge, variáveis, importação do OSM, verificação pós-deploy e emergência em [deploy.md](./deploy.md)
-- [ ] Rodar a migração `005_price_freshness_and_venue_tags.sql` em produção **antes** do merge do PR que a traz e incluir `https://brejamap.vercel.app/**` nas Redirect URLs do Supabase (pendente, dono: acesso ao Supabase de produção); ver [deploy.md](./deploy.md)
+- [x] Rodar a migração `005_price_freshness_and_venue_tags.sql` em produção **antes** do merge do PR que a traz (feito em 06/11/2026)
+- [ ] Incluir `https://brejamap.vercel.app/**` nas Redirect URLs do Supabase (pendente, dono: acesso ao Supabase de produção); ver [deploy.md](./deploy.md)
 - [x] Verificar variáveis de ambiente documentadas (ver `.env.example`): `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (README e plataforma de deploy)
 - [x] Script offline de importação de bares do OpenStreetMap (`npm run import:osm`, só localização, sem preços; dry-run por padrão) — substitui a ideia de fallback Overpass em tempo de requisição; ver [features.md](./features.md) seção 3.3
 - [x] Rodar a migração `002_venues_external_id.sql` e a importação de São Carlos (`--preset sao-carlos --write`) em produção, após revisão
@@ -107,7 +108,7 @@ Checkpoint: app está no ar e acessível; equipe pode monitorar e reagir.
 
 Backlog de features priorizadas com base em [MGB_FEATURES_AND_BRAZIL.md](../MGB_FEATURES_AND_BRAZIL.md) e necessidades do mercado brasileiro.
 
-### Implementado nesta rodada (código pronto; depende da migração `005` em produção)
+### Implementado nesta rodada (código pronto; migração `005` aplicada em produção)
 
 - [x] **Frescor de preços**: `beer_prices.updated_at` por preço (editar mantém a data dos preços que não mudaram), “Atualizado há X dias” no detalhe e no card, “Ainda é esse preço? Sim” (`POST /api/venues/[id]/confirm`, rate limit por IP e por IP+bar, id antigo → 404) e “Não, corrigir” (abre o editor). A data é a de entrada/confirmação no BrejaMap, não a de observação no bar. Renovação da moderação: uma edição que muda de fato os preços limpa `needs_review` (a correção responde ao “Sinalizar preços incorretos”; um novo relato liga de novo); salvar os mesmos preços, editar só atributos ou confirmar não limpa. Ver [features.md](./features.md) seção 11
 - [x] **Foto do cardápio → preços**: `POST /api/menu-photo` (login, JPEG/PNG/WebP até 4 MB conferidos pela assinatura, rate limit por usuário/IP + teto diário do site) → Vercel AI Gateway (`google/gemini-2.5-flash-lite`, saída JSON estrita) → preços acrescentados ao formulário para revisão em Adicionar bar e Editar preços; a foto não é guardada. Pendente (dono): `AI_GATEWAY_API_KEY` no Vercel. Seção 15

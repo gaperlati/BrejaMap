@@ -191,6 +191,7 @@ as $$
 declare
   v_attributes_changed boolean;
   v_prices_changed boolean := false;
+  v_happy_hour_changed boolean := false;
 begin
   -- Lock the row so concurrent edits of the same venue are serialized.
   perform 1 from public.venues where id = p_venue_id for update;
@@ -199,14 +200,20 @@ begin
   end if;
 
   if p_update_happy_hour then
-    update public.venues
+    -- Only a real change counts: resubmitting the same happy hour is not an edit.
+    update public.venues v
     set
       has_happy_hour = p_has_happy_hour,
       happy_hour_details = case
         when p_has_happy_hour then nullif(btrim(p_happy_hour_details), '')
         else null
       end
-    where id = p_venue_id;
+    where v.id = p_venue_id
+      and (v.has_happy_hour, v.happy_hour_details) is distinct from (
+        p_has_happy_hour,
+        case when p_has_happy_hour then nullif(btrim(p_happy_hour_details), '') else null end
+      );
+    v_happy_hour_changed := found;
   end if;
 
   if p_replace_prices then
@@ -215,7 +222,7 @@ begin
 
   v_attributes_changed := public.apply_venue_attributes(p_venue_id, p_attributes);
 
-  if p_update_happy_hour or p_replace_prices or v_attributes_changed then
+  if v_happy_hour_changed or v_prices_changed or v_attributes_changed then
     update public.venues
     set
       prices_unverified = true,
