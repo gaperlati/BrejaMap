@@ -3,13 +3,10 @@
 import { useId } from "react";
 import type { PriceFilter, BeerType, SortOption } from "@/types";
 import { FilterSelect } from "./FilterSelect";
-import type { TagFilters } from "@/lib/use-venue-filters";
 
 interface FilterBarProps {
   activeFilterCount: number;
   onClearFilters: () => void;
-  tagFilters: TagFilters;
-  onTagFilterChange: (key: keyof TagFilters, value: boolean) => void;
   maxPrice: PriceFilter;
   onMaxPriceChange: (v: PriceFilter) => void;
   beerType: BeerType | "";
@@ -102,7 +99,6 @@ export function FilterBar({
         />
         <span className="text-sm text-stone-300">Apenas happy hour</span>
       </label>
-
 
       <FilterSelect
         label="Ordenar"

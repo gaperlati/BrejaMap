@@ -8,7 +8,6 @@
 import type { BeerPrice, BeerType, PriceFilter, SortOption, Venue } from "../types";
 import type { VenueFromAPI } from "./api";
 import { distanceKm, expandBounds, type Bounds } from "./geo";
-import { openStatus } from "./opening-hours";
 import { ratingSortValue } from "./venue-ratings";
 import { comparePlacePriority } from "./venue-selection";
 
@@ -243,13 +242,6 @@ export interface VenueFilterOptions {
   beerType: BeerType | "";
   neighborhood: string;
   happyHourOnly: boolean;
-  footballOnly?: boolean;
-  reservationsOnly?: boolean;
-  outdoorOnly?: boolean;
-  /** Only venues whose opening hours say they are open at `now` (unknown hours excluded). */
-  openNowOnly?: boolean;
-  /** Clock for "Aberto agora" (tests); defaults to the current time. */
-  now?: Date;
   sort: SortOption;
   userLocation: { lat: number; lng: number } | null;
   mapCenter: { lat: number; lng: number };
@@ -262,7 +254,6 @@ export interface ActiveFilterState {
   neighborhood: string;
   happyHourOnly: boolean;
   sort: SortOption;
-  tagFilters: Record<string, boolean>;
 }
 
 /** How many filters differ from the defaults (sort counts when it isn't "Menor preço"). */
@@ -272,8 +263,7 @@ export function countActiveFilters(state: ActiveFilterState): number {
     Number(state.beerType !== "") +
     Number(state.neighborhood !== "") +
     Number(state.happyHourOnly) +
-    Number(state.sort !== "price_asc") +
-    Object.values(state.tagFilters).filter(Boolean).length
+    Number(state.sort !== "price_asc")
   );
 }
 
@@ -293,14 +283,6 @@ export function filterAndSortVenues(venues: Venue[], options: VenueFilterOptions
     list = list.filter(
       (v) => v.neighborhood.toLowerCase() === neighborhood.toLowerCase()
     );
-  }
-  // Attribute filters keep only venues where the fact is known to be true (unknown = excluded).
-  if (options.footballOnly) list = list.filter((v) => v.transmitsFootball === true);
-  if (options.reservationsOnly) list = list.filter((v) => v.acceptsReservations === true);
-  if (options.outdoorOnly) list = list.filter((v) => v.hasOutdoorArea === true);
-  if (options.openNowOnly) {
-    const now = options.now ?? new Date();
-    list = list.filter((v) => openStatus(v.openingHours, now)?.open === true);
   }
   if (happyHourOnly) {
     list = list.filter((v) => v.hasHappyHour);

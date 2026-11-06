@@ -54,8 +54,6 @@ export default function Home() {
     setBeerType,
     neighborhood,
     setNeighborhood,
-    tagFilters,
-    setTagFilter,
     happyHourOnly,
     setHappyHourOnly,
     sort,
@@ -186,8 +184,6 @@ export default function Home() {
             <FilterBar
               activeFilterCount={activeFilterCount}
               onClearFilters={clearFilters}
-              tagFilters={tagFilters}
-              onTagFilterChange={setTagFilter}
               maxPrice={maxPrice}
               onMaxPriceChange={setMaxPrice}
               beerType={beerType}

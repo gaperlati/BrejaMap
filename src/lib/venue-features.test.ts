@@ -318,31 +318,6 @@ const filterOptions = {
   mapCenter: { lat: -22, lng: -47 },
 };
 
-test("attribute filters keep only venues where the fact is known to be true", () => {
-  const all = [
-    venue({ id: "yes", name: "A", transmitsFootball: true, acceptsReservations: true, hasOutdoorArea: true }),
-    venue({ id: "no", name: "B", transmitsFootball: false, acceptsReservations: false, hasOutdoorArea: false }),
-    venue({ id: "unknown", name: "C" }),
-  ];
-  const ids = (o: object) => filterAndSortVenues(all, { ...filterOptions, ...o }).map((v) => v.id);
-  assert.deepEqual(ids({ footballOnly: true }), ["yes"]);
-  assert.deepEqual(ids({ reservationsOnly: true }), ["yes"]);
-  assert.deepEqual(ids({ outdoorOnly: true }), ["yes"]);
-  assert.deepEqual(ids({}), ["yes", "no", "unknown"]);
-});
-
-test("open-now filter uses São Paulo time and excludes unknown hours", () => {
-  const all = [
-    venue({ id: "late", name: "A", openingHours: { fri: [{ open: "18:00", close: "02:00" }] } }),
-    venue({ id: "lunch", name: "B", openingHours: { fri: [{ open: "11:00", close: "15:00" }] } }),
-    venue({ id: "unknown", name: "C" }),
-  ];
-  const ids = filterAndSortVenues(all, { ...filterOptions, openNowOnly: true, now: sp("2026-11-06T23:00:00") }).map(
-    (v) => v.id
-  );
-  assert.deepEqual(ids, ["late"]);
-});
-
 test("rating sort puts well-rated venues first and few-rating venues last", () => {
   const all = [
     venue({ id: "few", name: "A", ratingAvg: 5, ratingCount: 1 }),
@@ -438,14 +413,13 @@ test("priceLabelFontSize shrinks long labels, more inside cluster bubbles", () =
   assert.equal(priceLabelFontSize("R$ 12,50", true), 9);
 });
 
-test("countActiveFilters counts every non-default filter, including sort and tags", () => {
+test("countActiveFilters counts every non-default filter, including sort", () => {
   const defaults = {
     maxPrice: null,
     beerType: "" as const,
     neighborhood: "",
     happyHourOnly: false,
     sort: "price_asc" as const,
-    tagFilters: { footballOnly: false, openNowOnly: false },
   };
   assert.equal(countActiveFilters(defaults), 0);
   assert.equal(
@@ -454,8 +428,7 @@ test("countActiveFilters counts every non-default filter, including sort and tag
       maxPrice: 0,
       beerType: "lata",
       sort: "rating",
-      tagFilters: { footballOnly: true, openNowOnly: true },
     }),
-    5
+    3
   );
 });

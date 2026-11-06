@@ -53,7 +53,16 @@ export function AddPricesModal({
 
   const beerPrices = priceRowsToPrices(priceRows);
   const hoursValid = openingHoursValid(attributes.openingHours);
-  const canSave = beerPrices.length > 0 && hoursValid && !saving;
+  // A venue without prices can still get its attributes or happy hour saved; a venue that has
+  // prices must keep at least one (the PATCH leaves prices untouched when none are sent).
+  const hadPrices = (venue?.beerPrices.length ?? 0) > 0;
+  const otherChanges =
+    !!venue &&
+    (Object.keys(diffVenueAttributes(attributesOf(venue), attributes)).length > 0 ||
+      hasHappyHour !== venue.hasHappyHour ||
+      (hasHappyHour && happyHourDetails.trim() !== (venue.happyHourDetails ?? "")));
+  const pricesOk = beerPrices.length > 0 || (!hadPrices && otherChanges);
+  const canSave = pricesOk && hoursValid && !saving;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,7 +120,7 @@ export function AddPricesModal({
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <fieldset>
             <legend className="block text-sm font-medium text-stone-400 mb-2">
-              Preços de cerveja * (ao menos um)
+              {hadPrices ? "Preços de cerveja * (ao menos um)" : "Preços de cerveja (opcional)"}
             </legend>
             <PriceRowsEditor rows={priceRows} onChange={setPriceRows} disabled={saving} />
           </fieldset>
