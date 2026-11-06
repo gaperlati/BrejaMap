@@ -85,7 +85,7 @@ Documentação das funcionalidades atuais do app. Atualizada conforme novas tare
 - **Limpar filtros (N)**: aparece no topo do painel quando há filtros ativos e volta tudo ao padrão (`clearFilters` em `src/lib/use-venue-filters.ts`, contagem em `countActiveFilters`).
 - **Aba Lista no celular**: o painel de filtros fica recolhido até tocar no chip “Filtros”, para os resultados aparecerem primeiro; no desktop o painel continua sempre visível.
 - **Apenas happy hour**.
-- **Só bares que informaram** (seção 12): **Aberto agora** (pelo horário de funcionamento, no fuso de São Paulo, reavaliado a cada minuto enquanto o filtro está ligado), **Transmite futebol**, **Aceita reserva** e **Área externa**. Bares sem a informação (desconhecido) ficam de fora quando o filtro está ligado.
+- **Filtros por atributos**: Aberto agora, Transmite futebol, Aceita reserva e Área externa não são exibidos no painel. Os atributos continuam disponíveis no cadastro e no detalhe do bar.
 - **Ordenar**: Menor preço, Maior preço, **Mais perto**, **Melhor avaliação** (média; bares com menos de 3 avaliações vão para o fim) e Nome. "Mais perto" usa a última localização conhecida do usuário (geolocalização do navegador); sem ela, a distância é medida a partir do centro do mapa (`distanceKm` em `src/lib/geo.ts`).
 
 **Arquivos**: `src/components/FilterBar.tsx`, `src/components/FilterChips.tsx`, `src/app/page.tsx`, `src/lib/use-venue-filters.ts`, `src/lib/venue-state.ts` (filtros e ordenação), `src/lib/api.ts`, `src/lib/geo.ts`.
@@ -288,9 +288,9 @@ Ao selecionar um bar no mapa ou na lista:
 - **Campos** (todos opcionais, `null` = não informado): `transmits_football`, `accepts_reservations`, `has_outdoor_area` e `opening_hours` em `venues`. “Aceita reserva” é só a informação; reserva de mesa de verdade exigiria parceria com os bares e não existe.
 - **Edição**: bloco “Sobre o bar (opcional)” em Adicionar bar e Editar preços (`src/components/VenueAttributes.tsx`): três selects Sim / Não / Não sei e “Informar horário de funcionamento” (um intervalo por dia; ao ligar, todos os dias começam 18:00–00:00 para ajustar; dia desmarcado = fechado; ao menos um dia aberto; abertura ≠ fechamento).
 - **Contrato da API**: chave ausente = não muda; `null` = volta a não informado (`parseVenueAttributesPatch`/`toRpcAttributes` em `src/lib/venue-attributes.ts`). Horário validado em `parseOpeningHours` (dias `mon`..`sun`, até 3 intervalos `HH:MM` por dia, ao menos um intervalo).
-- **Aberto agora** (`src/lib/opening-hours.ts`): calculado no fuso `America/Sao_Paulo`, com intervalos que passam da meia-noite (ex.: sexta 18:00–02:00 vale até 02:00 de sábado). O detalhe e o filtro ativo atualizam o estado a cada minuto.
+- **Aberto agora** (`src/lib/opening-hours.ts`): calculado no fuso `America/Sao_Paulo`, com intervalos que passam da meia-noite (ex.: sexta 18:00–02:00 vale até 02:00 de sábado). O detalhe atualiza o estado a cada minuto.
 - **Marcação “não verificado”**: como já acontecia com o happy hour, qualquer edição comunitária, inclusive só de atributos, marca o bar como editado pela comunidade (`prices_unverified`, `last_edited_*`); uma chamada sem nenhuma mudança não marca.
-- **Exibição e filtros**: tags no detalhe e no card; filtros da seção 3.
+- **Exibição**: tags no detalhe e no card; os filtros por atributos foram retirados do painel (seção 3).
 
 **Arquivos**: `src/components/VenueAttributes.tsx`, `src/lib/venue-attributes.ts`, `src/lib/opening-hours.ts`, `src/app/api/venues/route.ts`, `src/app/api/venues/[id]/route.ts`, `supabase/migrations/005_price_freshness_and_venue_tags.sql`.
 
