@@ -35,6 +35,9 @@ export type RateLimitRule = { bucket: string; maxHits: number; windowSeconds: nu
 
 const TEN_MINUTES = 10 * 60;
 const ONE_HOUR = 60 * 60;
+const ONE_DAY = 24 * ONE_HOUR;
+/** Default cap on paid menu-photo extractions per day for the whole site (MENU_PHOTO_DAILY_LIMIT). */
+export const DEFAULT_MENU_PHOTO_DAILY_LIMIT = 200;
 
 export const RATE_LIMITS = {
   /** PATCH /api/venues/[id]: any venue, per IP. */
@@ -47,6 +50,18 @@ export const RATE_LIMITS = {
   createPerIp: { bucket: "venue_create_ip", maxHits: 5, windowSeconds: ONE_HOUR },
   /** POST /api/venues/[id]/report: per IP. */
   reportPerIp: { bucket: "venue_report_ip", maxHits: 5, windowSeconds: TEN_MINUTES },
+  /** POST /api/venues/[id]/confirm ("Ainda é esse preço? Sim"): per IP. */
+  confirmPerIp: { bucket: "price_confirm_ip", maxHits: 20, windowSeconds: TEN_MINUTES },
+  /** POST /api/venues/[id]/confirm: one venue, per IP, so one client can't keep a bar "fresh". */
+  confirmPerIpAndVenue: { bucket: "price_confirm_ip_venue", maxHits: 5, windowSeconds: ONE_DAY },
+  /** POST /api/menu-photo (paid AI call): per signed-in user. */
+  menuPhotoPerUser: { bucket: "menu_photo_user", maxHits: 10, windowSeconds: ONE_HOUR },
+  /** POST /api/menu-photo: per IP. */
+  menuPhotoPerIp: { bucket: "menu_photo_ip", maxHits: 15, windowSeconds: ONE_HOUR },
+  /** Favorites add/remove: per signed-in user. */
+  favoritePerUser: { bucket: "favorite_user", maxHits: 60, windowSeconds: TEN_MINUTES },
+  /** Ratings: per signed-in user. */
+  ratingPerUser: { bucket: "rating_user", maxHits: 30, windowSeconds: TEN_MINUTES },
 } satisfies Record<string, RateLimitRule>;
 
 export type RateLimitCheck = {
@@ -85,6 +100,44 @@ export function createRateLimitChecks(ip: string, userId: string, salt: string):
 /** Checks for POST /api/venues/[id]/report. */
 export function reportRateLimitChecks(ip: string, salt: string): RateLimitCheck[] {
   return [rateLimitCheck(RATE_LIMITS.reportPerIp, salt, ip)];
+}
+
+/** Checks for POST /api/venues/[id]/confirm. */
+export function confirmRateLimitChecks(ip: string, venueId: string, salt: string): RateLimitCheck[] {
+  return [
+    rateLimitCheck(RATE_LIMITS.confirmPerIp, salt, ip),
+    rateLimitCheck(RATE_LIMITS.confirmPerIpAndVenue, salt, ip, venueId.toLowerCase()),
+  ];
+}
+
+/** Site-wide daily cap on menu-photo extractions (env MENU_PHOTO_DAILY_LIMIT, default 200). */
+export function menuPhotoDailyLimit(env: Record<string, string | undefined> = process.env): number {
+  const n = Number(env.MENU_PHOTO_DAILY_LIMIT);
+  return Number.isInteger(n) && n > 0 ? n : DEFAULT_MENU_PHOTO_DAILY_LIMIT;
+}
+
+/** Checks for POST /api/menu-photo: per user, per IP and a global daily budget. */
+export function menuPhotoRateLimitChecks(
+  ip: string,
+  userId: string,
+  salt: string,
+  dailyLimit: number = menuPhotoDailyLimit()
+): RateLimitCheck[] {
+  return [
+    rateLimitCheck(RATE_LIMITS.menuPhotoPerUser, salt, userId),
+    rateLimitCheck(RATE_LIMITS.menuPhotoPerIp, salt, ip),
+    rateLimitCheck({ bucket: "menu_photo_global", maxHits: dailyLimit, windowSeconds: ONE_DAY }, salt, "all"),
+  ];
+}
+
+/** Checks for the favorites routes. */
+export function favoriteRateLimitChecks(userId: string, salt: string): RateLimitCheck[] {
+  return [rateLimitCheck(RATE_LIMITS.favoritePerUser, salt, userId)];
+}
+
+/** Checks for POST /api/venues/[id]/rating. */
+export function ratingRateLimitChecks(userId: string, salt: string): RateLimitCheck[] {
+  return [rateLimitCheck(RATE_LIMITS.ratingPerUser, salt, userId)];
 }
 
 export type RateLimitResult =
@@ -144,13 +197,18 @@ export function bearerToken(authorization: string | null | undefined): string | 
 export type AuthClient = {
   auth: {
     getUser(jwt: string): PromiseLike<{
-      data: { user: { id: string; email?: string | null } | null };
+      data: { user: { id: string; email?: string | null; email_confirmed_at?: string | null } | null };
       error: unknown;
     }>;
   };
 };
 
-export type AuthUser = { id: string; email: string | null };
+export type AuthUser = {
+  id: string;
+  email: string | null;
+  /** Supabase confirmed the e-mail (OTP/link or Google). */
+  emailConfirmed: boolean;
+};
 
 /**
  * Verifies the request's Bearer token with Supabase Auth. Returns the user, or null when the
@@ -165,9 +223,27 @@ export async function authenticateRequest(
   try {
     const { data, error } = await client.auth.getUser(token);
     if (error || !data?.user?.id) return null;
-    return { id: data.user.id, email: data.user.email ?? null };
+    return {
+      id: data.user.id,
+      email: data.user.email ?? null,
+      emailConfirmed: Boolean(data.user.email_confirmed_at),
+    };
   } catch (e) {
     console.error("Supabase auth.getUser threw:", e);
     return null;
   }
+}
+
+/** Lower-cased e-mails from ADMIN_EMAILS (comma-separated, server-only). Empty = nobody. */
+export function adminEmails(env: Record<string, string | undefined> = process.env): string[] {
+  return (env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e.includes("@"));
+}
+
+/** Moderator check: a confirmed e-mail listed in ADMIN_EMAILS. Denies by default. */
+export function isAdmin(user: AuthUser | null, env: Record<string, string | undefined> = process.env): boolean {
+  if (!user?.email || !user.emailConfirmed) return false;
+  return adminEmails(env).includes(user.email.trim().toLowerCase());
 }

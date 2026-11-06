@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { Bounds } from "@/lib/geo";
 import {
+  countActiveFilters,
   extractNeighborhoods,
   filterAndSortVenues,
   filterVenuesInBounds,
@@ -37,11 +38,23 @@ export function useVenueFilters({
 
   const neighborhoods = useMemo(() => extractNeighborhoods(venuesInBounds), [venuesInBounds]);
 
-  const hasActiveFilters =
-    maxPrice != null ||
-    beerType !== "" ||
-    neighborhood !== "" ||
-    sort !== "price_asc";
+  const activeFilterCount = countActiveFilters({
+    maxPrice,
+    beerType,
+    neighborhood,
+    happyHourOnly,
+    sort,
+  });
+  const hasActiveFilters = activeFilterCount > 0;
+
+  /** "Limpar filtros": back to the defaults (the panel stays as it is). */
+  const clearFilters = useCallback(() => {
+    setMaxPrice(null);
+    setBeerType("");
+    setNeighborhood("");
+    setHappyHourOnly(false);
+    setSort("price_asc");
+  }, []);
 
   const filteredAndSortedVenues = useMemo(
     () =>
@@ -84,6 +97,8 @@ export function useVenueFilters({
     venuesInBounds,
     neighborhoods,
     hasActiveFilters,
+    activeFilterCount,
+    clearFilters,
     filteredAndSortedVenues,
     getMatchingPrices,
     getMinPrice,

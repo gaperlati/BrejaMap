@@ -48,13 +48,16 @@ function GoogleIcon() {
 }
 
 /**
- * Login shown in "Adicionar bar" when the visitor is signed out: Google, or e-mail with a
+ * Login shown in "Adicionar bar" and "Minha conta" when the visitor is signed out: Google, or e-mail with a
  * 6-digit code (typed here, without leaving the page) or the link sent in the same e-mail.
  * Google uses Google Identity Services + `signInWithIdToken` (consent shows our own origin)
  * when NEXT_PUBLIC_GOOGLE_CLIENT_ID is set, else (or if the GIS script fails) the
  * `signInWithOAuth` redirect.
  */
-export function LoginCard() {
+export function LoginCard({ context = "add-venue" }: { context?: "add-venue" | "account" }) {
+  const forAccount = context === "account";
+  /** Where Google/link logins come back to (must be allowed in Supabase Auth → Redirect URLs). */
+  const returnUrl = () => window.location.origin + (forAccount ? "/conta" : "");
   const [step, setStep] = useState<Step>("choose");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -68,14 +71,16 @@ export function LoginCard() {
   const signInWithGoogle = async () => {
     setBusy(true);
     setError(null);
-    try {
-      sessionStorage.setItem(REOPEN_ADD_VENUE_KEY, "1");
-    } catch {
-      // Private mode etc.: the user just reopens the modal by hand.
+    if (!forAccount) {
+      try {
+        sessionStorage.setItem(REOPEN_ADD_VENUE_KEY, "1");
+      } catch {
+        // Private mode etc.: the user just reopens the modal by hand.
+      }
     }
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: returnUrl() },
     });
     // On success the browser is already navigating away.
     if (err) {
@@ -109,7 +114,7 @@ export function LoginCard() {
     setError(null);
     const { error: err } = await supabase.auth.signInWithOtp({
       email: trimmed,
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: returnUrl() },
     });
     setBusy(false);
     if (err) {
@@ -139,10 +144,13 @@ export function LoginCard() {
   return (
     <div className="rounded-xl border border-amber-500/40 bg-stone-900/60 p-4 space-y-4">
       <div>
-        <h3 className="text-base font-semibold text-stone-100">Entre para cadastrar um novo bar</h3>
+        <h3 className="text-base font-semibold text-stone-100">
+          {forAccount ? "Entre na sua conta" : "Entre para cadastrar um novo bar"}
+        </h3>
         <p className="mt-1 text-sm text-stone-400">
-          Para evitar spam, pedimos um login rápido antes de adicionar bares. Editar preços em bares
-          existentes não exige login.
+          {forAccount
+            ? "Com login você salva favoritos, avalia bares e preenche preços a partir da foto do cardápio. Editar preços não exige login."
+            : "Para evitar spam, pedimos um login rápido antes de adicionar bares. Editar preços em bares existentes não exige login."}
         </p>
       </div>
 

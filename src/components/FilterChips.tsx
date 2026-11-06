@@ -8,6 +8,8 @@ interface FilterChipsProps {
   filtersOpen: boolean;
   onFiltersOpenChange: (v: boolean) => void;
   hasActiveFilters: boolean;
+  /** Number of active filters, shown on the chip. */
+  activeFilterCount?: number;
   onLoadOsmBars?: () => void;
   osmLoadState?: OsmLoadState;
   osmError?: string | null;
@@ -21,6 +23,7 @@ export function FilterChips({
   filtersOpen,
   onFiltersOpenChange,
   hasActiveFilters,
+  activeFilterCount = 0,
   onLoadOsmBars,
   osmLoadState = "idle",
   osmError = null,
@@ -52,7 +55,12 @@ export function FilterChips({
           <span aria-hidden>⚙</span>
           Filtros
           {hasActiveFilters && (
-            <span className="w-1.5 h-1.5 rounded-full bg-stone-950" />
+            <span
+              className="min-w-[1.25rem] rounded-full bg-stone-950 px-1 text-center text-xs text-amber-400"
+              aria-label={`${activeFilterCount} ativo${activeFilterCount === 1 ? "" : "s"}`}
+            >
+              {activeFilterCount}
+            </span>
           )}
         </button>
         {onLoadOsmBars && (

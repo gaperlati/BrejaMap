@@ -157,8 +157,8 @@ test("parseVenueRpcPayload maps the venue and its prices", () => {
   assert.equal(venue.happyHourDetails, "17h–19h");
   assert.equal(venue.photoUrl, undefined);
   assert.deepEqual(venue.beerPrices, [
-    { type: "chope", label: "Brahma", priceBRL: 9.9, volumeMl: 300 },
-    { type: "lata", label: "Skol", priceBRL: 6, volumeMl: undefined },
+    { id: "p1", type: "chope", label: "Brahma", priceBRL: 9.9, volumeMl: 300 },
+    { id: "p2", type: "lata", label: "Skol", priceBRL: 6, volumeMl: undefined },
   ]);
 });
 

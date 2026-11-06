@@ -193,9 +193,10 @@ test("isolated unpriced venues are compact dots below zoom 16 and pins from 16",
   assert.equal(high.compact, false);
 });
 
-test("formatPriceLabel uses a pt-BR decimal comma", () => {
-  assert.equal(formatPriceLabel(8), "R$ 8,0");
-  assert.equal(formatPriceLabel(12.5), "R$ 12,5");
+test("formatPriceLabel uses the app-wide pt-BR format with two decimals", () => {
+  assert.equal(formatPriceLabel(8), "R$ 8,00");
+  assert.equal(formatPriceLabel(12.5), "R$ 12,50");
+  assert.equal(formatPriceLabel(7.9), "R$ 7,90");
 });
 
 test("clusterMapVenues labels pins and clusters with the price of the filtered beer type", () => {

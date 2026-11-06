@@ -16,11 +16,18 @@ export function venueDedupKey(venue: Venue): string {
   return `${normalizedName}|${latKey}|${lngKey}`;
 }
 
+/** Positive when `a` should be kept over `b`: user-added, then priced, then most recent. */
+export function comparePlacePriority(a: Venue, b: Venue): number {
+  return (
+    Number(!!a.userAdded) - Number(!!b.userAdded) ||
+    Number(a.beerPrices.length > 0) - Number(b.beerPrices.length > 0) ||
+    (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0)
+  );
+}
+
 export function pickPreferredVenue(current: Venue, candidate: Venue): Venue {
-  // Prefer user-added rows, then rows with beer prices, then most recent row.
-  const score = (v: Venue): number =>
-    (v.userAdded ? 100 : 0) + (v.beerPrices.length > 0 ? 10 : 0) + Date.parse(v.createdAt);
-  return score(candidate) >= score(current) ? candidate : current;
+  // Prefer user-added rows, then rows with beer prices, then most recent row (ties: candidate).
+  return comparePlacePriority(candidate, current) >= 0 ? candidate : current;
 }
 
 /** Collapses venues at the same place into one entry (see `pickPreferredVenue`). */
@@ -32,6 +39,46 @@ export function dedupeVenuesByPlace(venues: Venue[]): Venue[] {
     dedupedByPlace.set(key, current ? pickPreferredVenue(current, venue) : venue);
   }
   return Array.from(dedupedByPlace.values());
+}
+
+/** Two OpenStreetMap entries with the same name closer than this are shown as one bar. */
+export const OSM_NEAR_DUPLICATE_METERS = 25;
+
+function metersBetween(a: Venue, b: Venue): number {
+  const toRad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * toRad;
+  const dLng = (b.lng - a.lng) * toRad * Math.cos(((a.lat + b.lat) / 2) * toRad);
+  return Math.sqrt(dLat * dLat + dLng * dLng) * 6_371_000;
+}
+
+/**
+ * Display-only merge of OpenStreetMap near-duplicates: OSM sometimes maps one bar twice (a node
+ * and a building way, or two nodes) a few metres apart under the same name. Such pairs are shown
+ * once (see `pickPreferredVenue`); nothing is deleted. User-added venues are never merged here.
+ */
+export function collapseOsmNearDuplicates(
+  venues: Venue[],
+  maxMeters: number = OSM_NEAR_DUPLICATE_METERS
+): Venue[] {
+  const kept: Venue[] = [];
+  const osmByName = new Map<string, number[]>();
+  for (const venue of venues) {
+    if (!venue.fromOsm) {
+      kept.push(venue);
+      continue;
+    }
+    const name = venue.name.trim().toLowerCase();
+    const indexes = osmByName.get(name) ?? [];
+    const twin = indexes.find((i) => metersBetween(kept[i], venue) <= maxMeters);
+    if (twin !== undefined) {
+      kept[twin] = pickPreferredVenue(kept[twin], venue);
+      continue;
+    }
+    indexes.push(kept.length);
+    osmByName.set(name, indexes);
+    kept.push(venue);
+  }
+  return kept;
 }
 
 /** 0 = has prices, 1 = user-added without prices, 2 = everything else (e.g. OSM imports). */

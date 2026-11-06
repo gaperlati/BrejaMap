@@ -199,7 +199,11 @@ function fakeAuth(result: { user: { id: string; email?: string | null } | null; 
 
 test("authenticateRequest returns the verified user", async () => {
   const { client, tokens } = fakeAuth({ user: { id: "user-1", email: "a@b.com" } });
-  assert.deepEqual(await authenticateRequest(client, "Bearer tok"), { id: "user-1", email: "a@b.com" });
+  assert.deepEqual(await authenticateRequest(client, "Bearer tok"), {
+    id: "user-1",
+    email: "a@b.com",
+    emailConfirmed: false,
+  });
   assert.deepEqual(tokens, ["tok"]);
 });
 
@@ -222,7 +226,7 @@ test("authenticateRequest: invalid token, error or outage is unauthenticated", a
 
 test("authenticateRequest: user without email maps to email null", async () => {
   const { client } = fakeAuth({ user: { id: "user-2" } });
-  assert.deepEqual(await authenticateRequest(client, "Bearer tok"), { id: "user-2", email: null });
+  assert.deepEqual(await authenticateRequest(client, "Bearer tok"), { id: "user-2", email: null, emailConfirmed: false });
 });
 
 // --- Route responses (401 / 429) --------------------------------------------------------------

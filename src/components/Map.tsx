@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GoogleMap, Marker } from "@react-google-maps/api";
+import { track } from "@vercel/analytics";
 import type { Venue } from "@/types";
 import { useGoogleMaps } from "@/lib/use-google-maps";
 import { createMapHandle, type MapBounds, type MapHandle } from "@/lib/mapHandle";
 import {
   clusterMapVenues,
   formatPriceLabel,
+  priceLabelFontSize,
   type ClusterMarkerItem,
   type VenueMarkerItem,
 } from "@/lib/map-markers";
@@ -82,7 +84,7 @@ function makePriceBubbleIconUrl(priceLabel: string, isSelected: boolean): string
       ${SHADOW_FILTER}
       <path d="M4 0 L52 0 Q56 0 56 4 L56 22 Q56 26 52 26 L12 26 L6 32 L6 26 L4 26 Q0 26 0 22 L0 4 Q0 0 4 0 Z"
             fill="${bg}" stroke="${border}" stroke-width="2" filter="url(#shadow)"/>
-      <text x="28" y="18" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-weight="700" font-size="12">${priceLabel}</text>
+      <text x="28" y="18" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-weight="700" font-size="${priceLabelFontSize(priceLabel)}">${priceLabel}</text>
     </svg>
   `);
 }
@@ -96,7 +98,7 @@ function makePricedClusterIconUrl(priceLabel: string, extraCount: number): strin
       ${SHADOW_FILTER}
       <path d="M4 0 L64 0 Q68 0 68 4 L68 22 Q68 26 64 26 L12 26 L6 32 L6 26 L4 26 Q0 26 0 22 L0 4 Q0 0 4 0 Z"
             fill="#dc2626" stroke="#b91c1c" stroke-width="2" filter="url(#shadow)"/>
-      <text x="25" y="18" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-weight="700" font-size="12">${priceLabel}</text>
+      <text x="25" y="18" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-weight="700" font-size="${priceLabelFontSize(priceLabel, true)}">${priceLabel}</text>
       <rect x="47" y="5" width="18" height="16" rx="8" fill="#1c1917"/>
       <text x="56" y="16.5" text-anchor="middle" fill="#fbbf24" font-family="system-ui,sans-serif" font-weight="700" font-size="${badgeFontSize}">${badge}</text>
     </svg>
@@ -212,6 +214,12 @@ export function Map({
 
   // If the script doesn't finish loading in 12s, show a hint and retry option
   const { isLoaded, loadError, timedOut: loadTimeout, hasApiKey: apiKey } = useGoogleMaps();
+
+  // Monitoring: count map load failures (Vercel Web Analytics custom event, no personal data).
+  const mapFailure = loadError ? "script_error" : loadTimeout ? "timeout" : !apiKey ? "missing_key" : null;
+  useEffect(() => {
+    if (mapFailure) track("map_load_error", { reason: mapFailure });
+  }, [mapFailure]);
 
   const onLoad = useCallback((mapInstance: google.maps.Map) => {
     lastReportedRef.current = "";

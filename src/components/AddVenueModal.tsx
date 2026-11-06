@@ -2,7 +2,10 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import type { Venue, BeerType, BeerPrice } from "@/types";
+import { PriceRowsEditor } from "@/components/PriceRowsEditor";
+import { VenueAttributesEditor, openingHoursValid } from "@/components/VenueAttributes";
+import type { Venue, VenueAttributes } from "@/types";
+import { emptyPriceRow, priceRowsToPrices, type PriceRow } from "@/lib/price-rows";
 import { SAO_CARLOS_CENTER } from "@/data/venues";
 import { getAccessToken, getSupabaseBrowser } from "@/lib/supabase-browser";
 import { useAuthUser } from "@/lib/use-auth-user";
@@ -36,18 +39,6 @@ const VenueLocationMap = dynamic(
   }
 );
 
-const BEER_TYPES: { value: BeerType; label: string }[] = [
-  { value: "chope", label: "Chope" },
-  { value: "long_neck", label: "Long neck" },
-  { value: "lata", label: "Lata" },
-  { value: "garrafa", label: "Litrão" },
-  { value: "outro", label: "Outro" },
-];
-
-type PriceRow = { type: BeerType; label: string; priceBRL: number };
-
-const initialPriceRow = (): PriceRow => ({ type: "chope", label: "", priceBRL: 0 });
-
 const INPUT_CLASS =
   "w-full px-3 py-2 rounded-lg bg-stone-900 border border-stone-700 text-stone-100 placeholder-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50";
 
@@ -79,9 +70,10 @@ function AddVenueDialog({
   initialZoom,
 }: AddVenueModalProps) {
   const [name, setName] = useState("");
+  const [attributes, setAttributes] = useState<VenueAttributes>({});
   const [hasHappyHour, setHasHappyHour] = useState(false);
   const [happyHourDetails, setHappyHourDetails] = useState("");
-  const [priceRows, setPriceRows] = useState<PriceRow[]>([initialPriceRow()]);
+  const [priceRows, setPriceRows] = useState<PriceRow[]>(() => [emptyPriceRow()]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState<PickerMapStatus>("loading");
@@ -111,29 +103,7 @@ function AddVenueDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const addPriceRow = () => {
-    setPriceRows((prev) => [...prev, initialPriceRow()]);
-  };
-
-  const updatePriceRow = (index: number, updates: Partial<PriceRow>) => {
-    setPriceRows((prev) =>
-      prev.map((row, i) => (i === index ? { ...row, ...updates } : row))
-    );
-  };
-
-  const removePriceRow = (index: number) => {
-    setPriceRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
-  };
-
-  const validBeerPrices = (): BeerPrice[] => {
-    return priceRows
-      .filter((row) => row.priceBRL > 0)
-      .map((row) => ({
-        type: row.type,
-        label: row.label.trim() || BEER_TYPES.find((t) => t.value === row.type)!.label,
-        priceBRL: row.priceBRL,
-      }));
-  };
+  const beerPrices = priceRowsToPrices(priceRows);
 
   const mapAvailable = mapStatus === "ready";
   const insideServiceArea = isPinInsideServiceArea(loc);
@@ -148,9 +118,11 @@ function AddVenueDialog({
         ? "Confirme o local do bar no mapa."
         : !isLocationReadyToSave(loc)
           ? "Aguarde o endereço do local..."
-          : validBeerPrices().length === 0
+          : beerPrices.length === 0
             ? "Adicione ao menos um preço."
-            : null;
+            : !openingHoursValid(attributes.openingHours)
+              ? "Corrija o horário de funcionamento."
+              : null;
   const canSubmit = !saveBlocker && !saving;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -164,7 +136,8 @@ function AddVenueDialog({
       await onSubmit({
         name: name.trim(),
         ...venueLocationPayload(loc),
-        beerPrices: validBeerPrices(),
+        beerPrices,
+        ...attributes,
         hasHappyHour,
         happyHourDetails: hasHappyHour ? happyHourDetails.trim() : undefined,
       }, accessToken);
@@ -417,75 +390,10 @@ function AddVenueDialog({
                 <legend className="block text-sm font-medium text-stone-300 mb-2">
                   Preços de cerveja * (adicione ao menos um)
                 </legend>
-                <div className="space-y-3">
-                  {priceRows.map((row, index) => (
-                    <div
-                      key={`price-${index}`}
-                      className="grid grid-cols-[minmax(0,1fr)_7rem_auto] gap-2 sm:grid-cols-[7rem_minmax(0,1fr)_6.5rem_auto]"
-                    >
-                      <select
-                        value={row.type}
-                        onChange={(e) =>
-                          updatePriceRow(index, { type: e.target.value as BeerType })
-                        }
-                        aria-label={`Tipo da cerveja ${index + 1}`}
-                        className="px-2 py-2 rounded-lg bg-stone-900 border border-stone-700 text-stone-100 text-sm"
-                      >
-                        {BEER_TYPES.map(({ value, label }) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="text"
-                        value={row.label}
-                        onChange={(e) => updatePriceRow(index, { label: e.target.value })}
-                        placeholder="Marca (ex: Brahma)"
-                        aria-label={`Marca da cerveja ${index + 1}`}
-                        className="order-last col-span-3 px-3 py-2 rounded-lg bg-stone-900 border border-stone-700 text-stone-100 text-sm placeholder-stone-500 sm:order-none sm:col-span-1"
-                      />
-                      <div className="relative">
-                        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-sm text-stone-500" aria-hidden>
-                          R$
-                        </span>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          step={0.01}
-                          value={row.priceBRL || ""}
-                          onChange={(e) => {
-                            const v = parseFloat(e.target.value);
-                            updatePriceRow(index, {
-                              priceBRL: !Number.isNaN(v) && v >= 0 ? v : 0,
-                            });
-                          }}
-                          placeholder="0,00"
-                          aria-label={`Preço da cerveja ${index + 1} em reais`}
-                          className="w-full pl-8 pr-2 py-2 rounded-lg bg-stone-900 border border-stone-700 text-stone-100 text-sm"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removePriceRow(index)}
-                        disabled={priceRows.length <= 1}
-                        className="p-2 rounded text-stone-500 hover:text-stone-300 hover:bg-stone-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                        aria-label={`Remover cerveja ${index + 1}`}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={addPriceRow}
-                  className="mt-3 text-sm text-amber-400 hover:text-amber-300"
-                >
-                  + Adicionar cerveja
-                </button>
+                <PriceRowsEditor rows={priceRows} onChange={setPriceRows} disabled={saving} />
               </fieldset>
+
+              <VenueAttributesEditor value={attributes} onChange={setAttributes} />
 
               <label className="flex items-center gap-2 cursor-pointer">
                 <input

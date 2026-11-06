@@ -1,11 +1,13 @@
 /**
  * Atomic venue writes through the Postgres functions in
- * supabase/migrations/003_atomic_venue_writes.sql (updated by 004_auth_rate_limits_and_moderation.sql).
+ * supabase/migrations/003_atomic_venue_writes.sql (updated by 004_auth_rate_limits_and_moderation.sql
+ * and 005_price_freshness_and_venue_tags.sql).
  * Free of Next.js imports so it can be unit-tested with a fake client.
  */
 
-import type { BeerPrice, Venue } from "@/types";
+import type { BeerPrice, Venue, VenueAttributesPatch } from "@/types";
 import { rowToVenue, type BeerPriceRow, type VenueRow } from "./venue-rows";
+import { toRpcAttributes } from "./venue-attributes";
 
 /** The slice of the Supabase client used here (lets tests pass a fake). */
 export type RpcClient = {
@@ -38,7 +40,12 @@ export function toRpcPrices(prices: BeerPrice[]): RpcPrice[] {
  */
 export function buildUpdateVenueArgs(
   venueId: string,
-  input: { hasHappyHour?: boolean; happyHourDetails: string; beerPrices: BeerPrice[] },
+  input: {
+    hasHappyHour?: boolean;
+    happyHourDetails: string;
+    beerPrices: BeerPrice[];
+    attributes?: VenueAttributesPatch;
+  },
   editedBy: string | null = null
 ): Record<string, unknown> {
   const updateHappyHour = typeof input.hasHappyHour === "boolean";
@@ -51,6 +58,7 @@ export function buildUpdateVenueArgs(
     p_replace_prices: input.beerPrices.length > 0,
     p_prices: toRpcPrices(input.beerPrices),
     p_edited_by: editedBy,
+    p_attributes: toRpcAttributes(input.attributes),
   };
 }
 
@@ -70,6 +78,7 @@ export function buildCreateVenueArgs(input: {
   happyHourDetails: string;
   beerPrices: BeerPrice[];
   createdBy: string | null;
+  attributes?: VenueAttributesPatch;
 }): Record<string, unknown> {
   return {
     p_name: input.name,
@@ -84,6 +93,7 @@ export function buildCreateVenueArgs(input: {
       input.hasHappyHour && input.happyHourDetails ? input.happyHourDetails : null,
     p_prices: toRpcPrices(input.beerPrices),
     p_created_by: input.createdBy,
+    p_attributes: toRpcAttributes(input.attributes),
   };
 }
 
@@ -105,7 +115,7 @@ export function parseVenueRpcPayload(data: unknown): Venue | null {
  */
 export async function runVenueWrite(
   client: RpcClient,
-  fn: "update_venue_and_prices" | "create_venue_with_prices",
+  fn: "update_venue_and_prices" | "create_venue_with_prices" | "confirm_beer_price",
   args: Record<string, unknown>
 ): Promise<VenueWriteResult> {
   let data: unknown;
@@ -120,7 +130,7 @@ export async function runVenueWrite(
   if (error) {
     if ((error as { code?: string }).code === "PGRST202") {
       console.error(
-        `Supabase rpc ${fn} not found: run supabase/migrations/003_atomic_venue_writes.sql and 004_auth_rate_limits_and_moderation.sql`
+        `Supabase rpc ${fn} not found: run supabase/migrations/003 to 005 (see docs/features.md)`
       );
     }
     console.error(`Supabase rpc ${fn} error:`, error);

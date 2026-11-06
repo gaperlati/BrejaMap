@@ -5,6 +5,8 @@ import type { PriceFilter, BeerType, SortOption } from "@/types";
 import { FilterSelect } from "./FilterSelect";
 
 interface FilterBarProps {
+  activeFilterCount: number;
+  onClearFilters: () => void;
   maxPrice: PriceFilter;
   onMaxPriceChange: (v: PriceFilter) => void;
   beerType: BeerType | "";
@@ -20,6 +22,8 @@ interface FilterBarProps {
 }
 
 export function FilterBar({
+  activeFilterCount,
+  onClearFilters,
   maxPrice,
   onMaxPriceChange,
   beerType,
@@ -36,6 +40,15 @@ export function FilterBar({
   const priceId = useId();
   return (
     <div className="p-3 border-b border-stone-800 space-y-3 bg-stone-900/50">
+      {activeFilterCount > 0 && (
+        <button
+          type="button"
+          onClick={onClearFilters}
+          className="text-sm text-amber-400 underline underline-offset-2 hover:text-amber-300"
+        >
+          Limpar filtros ({activeFilterCount})
+        </button>
+      )}
       <div>
         <label htmlFor={priceId} className="block text-xs font-medium text-stone-500 mb-1">
           Preço máximo (R$)
