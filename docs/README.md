@@ -19,7 +19,7 @@ Produção: [brejamap.vercel.app](https://brejamap.vercel.app).
 
 - **Ao implementar uma nova feature**: atualize `docs/features.md` (nova seção ou alteração na existente).
 - **Ao mudar comportamento relevante** (ex.: filtros, fluxo de adicionar bar, integrações): descreva a mudança em `features.md`.
-- **Regra do projeto**: existe uma regra em `.cursor/rules/` para lembrar de atualizar a documentação junto com o código.
+- **Regra do projeto**: o `AGENTS.md` na raiz lembra os agentes de código de atualizar a documentação junto com o código.
 
 ## Estrutura sugerida para novas seções
 
