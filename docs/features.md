@@ -142,7 +142,7 @@ Ao publicar o app, o Supabase começa vazio. Opções para o usuário não ficar
 - **Limites do Overpass**: requisições sequenciais (limite municipal + uma por bbox), cada uma com timeout; 429/502/503/504 são repetidos no máximo `--max-retries` vezes (padrão 1), respeitando `Retry-After`. Qualquer falha aborta a execução antes de gravar.
 - **Segurança do modo**: combinar `--dry-run` e `--write` é rejeitado antes da rede. A deduplicação usa `external_id`; bares cadastrados manualmente sem esse identificador podem gerar outra linha e precisam de revisão.
 - **Atribuição**: dados © colaboradores do OpenStreetMap (ODbL).
-- Comandos completos no [README](../README.md#importar-bares-do-openstreetmap-operador).
+- Comandos completos em [osm-import.md](./osm-import.md).
 
 **Arquivos**: `scripts/import-osm.ts`, `scripts/lib/osm-import.ts`, `scripts/osm-import.test.ts`, `src/lib/overpass.ts`, `supabase/migrations/002_venues_external_id.sql`.
 
@@ -264,5 +264,5 @@ Ao selecionar um bar no mapa ou na lista:
 
 ## Referências
 
-- Comparação com MisterGoodBeer e prioridades para o Brasil: **MGB_FEATURES_AND_BRAZIL.md** na raiz do projeto.
-- Configuração e scripts: **README.md** na raiz.
+- Comparação com MisterGoodBeer e prioridades para o Brasil: [MGB_FEATURES_AND_BRAZIL.md](./MGB_FEATURES_AND_BRAZIL.md).
+- Configuração e execução local: [setup.md](./setup.md).

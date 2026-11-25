@@ -97,13 +97,13 @@ Checkpoint: app está no ar e acessível; equipe pode monitorar e reagir.
 ### Pós-lançamento
 
 - [ ] Monitoramento: uso do Supabase, erros de API (5xx), falhas de carregamento do mapa
-- [ ] Link para app em produção no README e docs
+- [x] Link para app em produção no README e docs
 
 ---
 
 ## Pós-release (v1.x / próximas features)
 
-Backlog de features priorizadas com base em [MGB_FEATURES_AND_BRAZIL.md](../MGB_FEATURES_AND_BRAZIL.md) e necessidades do mercado brasileiro.
+Backlog de features priorizadas com base em [MGB_FEATURES_AND_BRAZIL.md](./MGB_FEATURES_AND_BRAZIL.md) e necessidades do mercado brasileiro.
 
 ### Próximas features (prioridade máxima)
 
